@@ -1,26 +1,14 @@
 #!/usr/bin/env node
 /**
- * Tiny local proxy for MoneyControl's sector heat-map API.
- *
- * The dashboard runs in a browser, and MoneyControl's API doesn't send back
- * an Access-Control-Allow-Origin header for cross-site requests — so the
- * browser refuses the response before your JS ever sees it (that's the
- * "Failed to fetch" you hit). CORS is a browser-only rule; a plain
- * server-to-server request like this one isn't subject to it at all, so
- * this proxy fetches the data on your machine and hands it to the
- * dashboard over localhost, where you control the CORS headers.
- *
- * Requires only Node.js (no npm install).
- *
- * Run:
- *   node server.js
- *
- * Then in the dashboard, set "Proxy base URL" to:
- *   http://localhost:3001
+ * Sector Momentum Dashboard & MoneyControl API Proxy Server
+ * Serves both the frontend dashboard and the API proxy.
+ * Zero external npm dependencies (pure Node.js standard library).
  */
 
 const http = require('http');
 const https = require('https');
+const fs = require('fs');
+const path = require('path');
 
 const PORT = process.env.PORT || 3001;
 
@@ -32,7 +20,6 @@ function fetchHeatMap({ indexId = '9', period = '1D', type = 'MM', subType = 'SE
     https.get(url, {
       headers: {
         'accept': 'application/json, text/plain, */*',
-        // A normal desktop UA — some APIs reject Node's default UA string outright.
         'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36'
       }
     }, (res) => {
@@ -48,10 +35,22 @@ function fetchHeatMap({ indexId = '9', period = '1D', type = 'MM', subType = 'SE
   });
 }
 
+function getHtmlFilePath() {
+  const candidates = [
+    path.join(__dirname, 'index.html'),
+    path.join(__dirname, 'sector-momentum-dashboard (2).html'),
+    path.join(__dirname, 'sector-momentum-dashboard.html')
+  ];
+  for (const file of candidates) {
+    if (fs.existsSync(file)) return file;
+  }
+  return null;
+}
+
 const server = http.createServer(async (req, res) => {
   const reqUrl = new URL(req.url, `http://localhost:${PORT}`);
 
-  // Let the dashboard (running on whatever origin serves it) call this proxy.
+  // CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -61,24 +60,45 @@ const server = http.createServer(async (req, res) => {
     return res.end();
   }
 
-  if (reqUrl.pathname !== '/api/heat-map') {
-    res.writeHead(404, { 'Content-Type': 'application/json' });
-    return res.end(JSON.stringify({ error: 'Not found. Try /api/heat-map?indexId=9' }));
+  // Health check endpoint for Docker / cloud platforms
+  if (reqUrl.pathname === '/healthz' || reqUrl.pathname === '/api/health') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify({ status: 'ok', time: new Date().toISOString() }));
   }
 
-  try {
-    const params = Object.fromEntries(reqUrl.searchParams);
-    const body = await fetchHeatMap(params);
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(body);
-  } catch (err) {
-    res.writeHead(502, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ error: 'Upstream fetch failed', detail: err.message }));
+  // Serve Frontend Dashboard HTML
+  if (reqUrl.pathname === '/' || reqUrl.pathname === '/index.html') {
+    const htmlPath = getHtmlFilePath();
+    if (htmlPath) {
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      return fs.createReadStream(htmlPath).pipe(res);
+    }
+    res.writeHead(404, { 'Content-Type': 'text/plain' });
+    return res.end('Dashboard HTML file not found.');
   }
+
+  // API Proxy for MoneyControl HeatMap
+  if (reqUrl.pathname === '/api/heat-map') {
+    try {
+      const params = Object.fromEntries(reqUrl.searchParams);
+      const body = await fetchHeatMap(params);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(body);
+    } catch (err) {
+      res.writeHead(502, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Upstream fetch failed', detail: err.message }));
+    }
+    return;
+  }
+
+  res.writeHead(404, { 'Content-Type': 'application/json' });
+  res.end(JSON.stringify({ error: 'Not found' }));
 });
 
-server.listen(PORT, () => {
-  console.log(`Heat-map proxy listening on http://localhost:${PORT}`);
-  console.log(`Try it directly:  http://localhost:${PORT}/api/heat-map?indexId=9`);
-  console.log(`In the dashboard, set "Proxy base URL" to http://localhost:${PORT}`);
+server.listen(PORT, '0.0.0.0', () => {
+  console.log(`=================================================`);
+  console.log(`  Sector Momentum Dashboard & Proxy Server`);
+  console.log(`  Listening on: http://0.0.0.0:${PORT}`);
+  console.log(`  Health check: http://0.0.0.0:${PORT}/healthz`);
+  console.log(`=================================================`);
 });

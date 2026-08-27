@@ -1,0 +1,12 @@
+{
+  "name": "sector-momentum-dashboard",
+  "version": "1.0.0",
+  "description": "Sector Momentum Dashboard & MoneyControl API Proxy",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "keywords": ["finance", "stocks", "momentum", "dashboard", "nifty"],
+  "author": "",
+  "license": "MIT"
+}
