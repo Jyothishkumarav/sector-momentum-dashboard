@@ -1178,7 +1178,21 @@
   }
 
   function render(){
-    if (!rawPayload) return;
+    if (!rawPayload) {
+      els.statsRow.style.display = 'none';
+      if (els.tickerTrack && els.tickerTrack.parentElement) {
+        els.tickerTrack.parentElement.style.display = 'none';
+      }
+      els.grid.innerHTML = `
+        <div class="empty">
+          <b>No index data loaded yet</b>
+          Click <b>Fetch live</b> to pull real-time sector momentum or click <b>Load sample data</b> / <b>Paste JSON</b> to explore.
+        </div>`;
+      return;
+    }
+    if (els.tickerTrack && els.tickerTrack.parentElement) {
+      els.tickerTrack.parentElement.style.display = 'block';
+    }
     const { sectors, bySector, asOnDate } = process(rawPayload);
     const sectorThresh = parseFloat(els.sectorThresh.value) || 0;
     const stockThresh = parseFloat(els.stockThresh.value) || 0;
@@ -1214,7 +1228,11 @@
   function renderMulti(){
     const ids = MULTI_INDEX_ORDER.filter(id => multiPayloads[id]);
     if (!ids.length){
-      els.multiIndexList.innerHTML = '';
+      els.multiIndexList.innerHTML = `
+        <div class="empty" style="margin-top:12px;">
+          <b>No multi-index data loaded yet</b>
+          Click <b>Fetch all 5 live</b> to scan across Nifty 50, 100, 200, Midcap 100, and Smallcap 50, or click <b>Preview with sample data</b>.
+        </div>`;
       return;
     }
     const sectorThresh = parseFloat(els.multiSectorThresh.value) || 0;
@@ -1300,7 +1318,7 @@
     const thresh = parseFloat(summaryThreshInp.value) || 0;
     const ids = MULTI_INDEX_ORDER.filter(id => multiPayloads[id]);
     if (!ids.length){
-      summaryList.innerHTML = '<p style="padding:0 28px;color:var(--text-dim);font-size:13px;">No data loaded yet — use the Multi-Index Overview above to fetch or load sample data, then click Refresh summary.</p>';
+      summaryList.innerHTML = '<p style="padding:16px 28px;color:var(--text-dim);font-size:13px;">No data loaded yet — use <b>Fetch all 5 live</b> above or <b>Preview with sample data</b>, then click Refresh summary.</p>';
       return;
     }
     summaryList.innerHTML = ids.map(id => {
@@ -1912,15 +1930,12 @@
     }
 };
 
-  // Auto-load sample on first paint so the dashboard isn't empty.
-  rawPayload = SAMPLE_DATA;
+  // Initialize dashboard views with clear empty states on first paint.
+  updateConfluenceLabels();
   render();
-
-  MULTI_INDEX_ORDER.forEach(id => { multiPayloads[id] = SAMPLE_DATA; });
-  multiIsSample = true;
   renderMulti();
   renderSummary();
-  loadConfluenceSample();
+  renderConfluence();
 })();
 </script>
 
