@@ -534,6 +534,137 @@
     color:var(--text-dim);
   }
 
+  /* ---------- Dual-Timeframe Confluence Scanner ---------- */
+  .confluence-section-header{
+    max-width:1240px;
+    margin:60px auto 0;
+    padding:28px 28px 0;
+    border-top:1px solid var(--border);
+  }
+  .confluence-section-header h2{
+    font-family:'Space Grotesk',sans-serif;
+    font-size:clamp(21px,3vw,27px);
+    font-weight:700;
+    margin:0 0 6px;
+    letter-spacing:-0.01em;
+  }
+  .confluence-badge{
+    display:inline-flex;
+    align-items:center;
+    gap:4px;
+    background:rgba(240,185,77,0.12);
+    border:1px solid rgba(240,185,77,0.3);
+    color:var(--amber);
+    padding:2px 8px;
+    border-radius:6px;
+    font-size:11px;
+    font-family:'JetBrains Mono',monospace;
+    font-weight:600;
+    letter-spacing:0.04em;
+    text-transform:uppercase;
+  }
+  .confluence-card{
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:var(--radius);
+    padding:18px 18px 12px;
+    position:relative;
+    overflow:hidden;
+    transition:border-color .15s ease, transform .1s ease;
+  }
+  .confluence-card:hover{
+    border-color:rgba(53,208,138,0.45);
+  }
+  .confluence-card-top{
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-start;
+    gap:12px;
+    margin-bottom:8px;
+  }
+  .confluence-sector-title{
+    font-family:'Space Grotesk',sans-serif;
+    font-weight:600;
+    font-size:17px;
+    color:var(--text);
+  }
+  .confluence-dual-changes{
+    display:flex;
+    gap:6px;
+    flex-wrap:wrap;
+    align-items:center;
+  }
+  .confluence-pill-tag{
+    display:inline-flex;
+    align-items:center;
+    gap:4px;
+    font-family:'JetBrains Mono',monospace;
+    font-size:12px;
+    font-weight:700;
+    padding:4px 8px;
+    border-radius:6px;
+    white-space:nowrap;
+  }
+  .confluence-pill-tag.day{
+    background:var(--gain-dim);
+    color:var(--gain);
+    border:1px solid rgba(53,208,138,0.25);
+  }
+  .confluence-pill-tag.compare{
+    background:rgba(240,185,77,0.12);
+    color:var(--amber);
+    border:1px solid rgba(240,185,77,0.3);
+  }
+  .confluence-stock-table{
+    margin-top:10px;
+    border-top:1px solid var(--border);
+    padding-top:8px;
+    display:flex;
+    flex-direction:column;
+    gap:6px;
+  }
+  .confluence-stock-item{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding:8px 10px;
+    border-radius:6px;
+    background:rgba(24,34,56,0.5);
+    border:1px solid rgba(35,44,66,0.6);
+    text-decoration:none;
+    gap:12px;
+    transition:background .12s ease, border-color .12s ease;
+  }
+  .confluence-stock-item:hover{
+    background:var(--surface-2);
+    border-color:rgba(240,185,77,0.35);
+  }
+  .confluence-stock-item:hover .stock-name{
+    color:var(--amber);
+  }
+  .confluence-stock-metrics{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    font-family:'JetBrains Mono',monospace;
+    font-size:12px;
+    white-space:nowrap;
+  }
+  .confluence-stat-box{
+    display:inline-block;
+    padding:2px 6px;
+    border-radius:4px;
+    font-weight:600;
+  }
+  .confluence-stat-box.day{
+    background:var(--gain-dim);
+    color:var(--gain);
+  }
+  .confluence-stat-box.compare{
+    background:rgba(240,185,77,0.15);
+    color:var(--amber);
+  }
+
   footer{
     max-width:1240px;
     margin:40px auto 0;
@@ -683,6 +814,72 @@
 </div>
 
 <div id="multiIndexSummaryList"></div>
+
+<!-- ===== Dual-Timeframe Momentum Confluence (1D vs 5D / 1M) ===== -->
+<section class="confluence-section-header">
+  <div style="display:flex; align-items:center; gap:10px; margin-bottom:6px; flex-wrap:wrap;">
+    <p class="eyebrow" style="margin:0;">Multi-Timeframe Trend Screener</p>
+    <span class="confluence-badge">⚡ 1D vs 5D / 1M Confluence</span>
+  </div>
+  <h2>Dual-Timeframe Momentum Confluence</h2>
+  <p class="subhead">Compare 1-day momentum against 5-day or 1-month trends. Highlights sectors and individual stocks that are trending positively in <b>both</b> timeframes.</p>
+</section>
+
+<div class="controls" id="confluenceControls">
+  <div class="field">
+    <label for="confluenceIndexId">Index segment</label>
+    <select id="confluenceIndexId">
+      <option value="all" selected>All 5 Indices Combined</option>
+      <option value="9">Nifty 50</option>
+      <option value="28">Nifty 100</option>
+      <option value="49">Nifty 200</option>
+      <option value="27">Midcap 100</option>
+      <option value="113">Smallcap 50</option>
+    </select>
+    <span class="hint">scan scope</span>
+  </div>
+  <div class="field">
+    <label for="confluenceComparePeriod">Compare 1D vs</label>
+    <select id="confluenceComparePeriod">
+      <option value="5D" selected>5D — 5 Days</option>
+      <option value="1M">1M — 1 Month</option>
+    </select>
+    <span class="hint">secondary period</span>
+  </div>
+  <div class="field">
+    <label for="confluence1DThresh">1D Sector thresh %</label>
+    <input type="number" id="confluence1DThresh" value="1.0" step="0.1" min="0">
+    <span class="hint">1D change ≥ this</span>
+  </div>
+  <div class="field">
+    <label for="confluenceCompareThresh" id="lblConfluenceCompareThresh">5D Sector thresh %</label>
+    <input type="number" id="confluenceCompareThresh" value="1.0" step="0.1" min="0">
+    <span class="hint" id="hintConfluenceCompareThresh">5D change ≥ this</span>
+  </div>
+  <div class="field">
+    <label for="confluenceStockThresh">Stock thresh %</label>
+    <input type="number" id="confluenceStockThresh" value="1.0" step="0.1" min="0">
+    <span class="hint">1D & compare ≥ this</span>
+  </div>
+  <div class="field btn-field">
+    <label>Actions</label>
+    <div class="btn-row">
+      <button class="ghost" id="btnConfluenceSample" type="button">Preview with sample data</button>
+      <button class="primary" id="btnConfluenceFetch" type="button">Fetch live comparison</button>
+    </div>
+    <span class="hint">&nbsp;</span>
+  </div>
+</div>
+
+<div class="banner" id="confluenceBannerWrap" style="display:none;">
+  <div class="banner-inner" id="confluenceBannerInner"></div>
+</div>
+
+<div class="stats" id="confluenceStatsRow" style="display:none;"></div>
+
+<main style="margin-top:20px;">
+  <div class="grid" id="confluenceGrid"></div>
+</main>
 
 <footer>
   Data via MoneyControl's public heat-map endpoint. Numbers reflect the last fetch or pasted snapshot, not a live stream.
@@ -1088,6 +1285,344 @@
   btnSummaryRefresh.addEventListener('click', renderSummary);
   summaryThreshInp.addEventListener('input', renderSummary);
 
+  // ---------- Dual-Timeframe Confluence Scanner (1D vs 5D / 1M) ----------
+  const confluenceEls = {
+    indexId: document.getElementById('confluenceIndexId'),
+    comparePeriod: document.getElementById('confluenceComparePeriod'),
+    thresh1D: document.getElementById('confluence1DThresh'),
+    threshCompare: document.getElementById('confluenceCompareThresh'),
+    lblThreshCompare: document.getElementById('lblConfluenceCompareThresh'),
+    hintThreshCompare: document.getElementById('hintConfluenceCompareThresh'),
+    stockThresh: document.getElementById('confluenceStockThresh'),
+    btnFetch: document.getElementById('btnConfluenceFetch'),
+    btnSample: document.getElementById('btnConfluenceSample'),
+    bannerWrap: document.getElementById('confluenceBannerWrap'),
+    bannerInner: document.getElementById('confluenceBannerInner'),
+    statsRow: document.getElementById('confluenceStatsRow'),
+    grid: document.getElementById('confluenceGrid'),
+  };
+
+  let confluence1DPayloads = {};      // indexId -> 1D payload
+  let confluenceComparePayloads = {}; // indexId -> 5D/1M payload
+  let confluenceIsSample = false;
+
+  function showConfluenceBanner(html, warn){
+    confluenceEls.bannerWrap.style.display = 'block';
+    confluenceEls.bannerInner.innerHTML = html;
+    confluenceEls.bannerInner.className = 'banner-inner' + (warn ? ' warn' : '');
+  }
+  function hideConfluenceBanner(){ confluenceEls.bannerWrap.style.display = 'none'; }
+
+  function updateConfluenceLabels(){
+    const period = confluenceEls.comparePeriod.value;
+    confluenceEls.lblThreshCompare.textContent = `${period} Sector thresh %`;
+    confluenceEls.hintThreshCompare.textContent = `${period} change ≥ this`;
+  }
+  confluenceEls.comparePeriod.addEventListener('change', () => {
+    updateConfluenceLabels();
+    if (Object.keys(confluence1DPayloads).length) {
+      if (confluenceIsSample) {
+        loadConfluenceSample();
+      } else {
+        fetchConfluenceLive();
+      }
+    }
+  });
+
+  function buildUrlWithPeriod(indexId, period){
+    const proxyBase = (els.proxyUrl.value || '').trim().replace(/\/+$/, '');
+    const p = period || '1D';
+    if (proxyBase) {
+      return `${proxyBase}/api/heat-map?period=${p}&type=MM&indexId=${indexId}&subType=SE`;
+    }
+    return `https://api.moneycontrol.com/mcapi/v1/indices/ad-ratio/heat-map?period=${p}&type=MM&indexId=${indexId}&subType=SE`;
+  }
+
+  function getTargetIndices(){
+    const sel = confluenceEls.indexId.value;
+    if (sel === 'all') return MULTI_INDEX_ORDER;
+    return [sel];
+  }
+
+  function renderConfluence(){
+    const targetIds = getTargetIndices();
+    const period = confluenceEls.comparePeriod.value;
+    const thresh1D = parseFloat(confluenceEls.thresh1D.value) || 0;
+    const threshCompare = parseFloat(confluenceEls.threshCompare.value) || 0;
+    const stockThresh = parseFloat(confluenceEls.stockThresh.value) || 0;
+
+    // Check if we have data for the target indices
+    const availableIds = targetIds.filter(id => confluence1DPayloads[id] && confluenceComparePayloads[id]);
+    if (!availableIds.length){
+      confluenceEls.statsRow.style.display = 'none';
+      confluenceEls.grid.innerHTML = `
+        <div class="empty">
+          <b>No confluence comparison data loaded yet</b>
+          Click <b>Fetch live comparison</b> or <b>Preview with sample data</b> above to scan sectors trending in both 1D and ${period}.
+        </div>`;
+      return;
+    }
+
+    // Merge sectors across target indices
+    const sectorMap = {}; // sectorName -> { sector1D, sectorCompare, stocks1D: Map, stocksCompare: Map, indexNames: Set }
+    let latestAsOn = '';
+
+    availableIds.forEach(id => {
+      const p1D = process(confluence1DPayloads[id]);
+      const pComp = process(confluenceComparePayloads[id]);
+      if (p1D.asOnDate) latestAsOn = p1D.asOnDate.trim();
+
+      const indexLabel = INDEX_NAMES[id] || ('Index ' + id);
+
+      // Map 1D sectors & stocks
+      const compSectorById = {};
+      pComp.sectors.forEach(s => { compSectorById[s.id] = s; compSectorById[s.name] = s; });
+
+      p1D.sectors.forEach(s1D => {
+        const sComp = compSectorById[s1D.id] || compSectorById[s1D.name];
+        if (!sComp) return;
+
+        if (!sectorMap[s1D.name]){
+          sectorMap[s1D.name] = {
+            name: s1D.name,
+            change1D: s1D.changeP,
+            changeCompare: sComp.changeP,
+            totalStocks: s1D.totalStocks,
+            stocks1D: {},
+            stocksCompare: {},
+            indices: new Set()
+          };
+        }
+        sectorMap[s1D.name].indices.add(indexLabel);
+
+        // Map stocks
+        const st1DList = p1D.bySector[s1D.id] || [];
+        const stCompList = pComp.bySector[sComp.id] || [];
+        const compStockMap = {};
+        stCompList.forEach(st => {
+          const key = st.scId || st.name || st.fullName;
+          compStockMap[key] = st;
+          compStockMap[st.name] = st;
+        });
+
+        st1DList.forEach(st1D => {
+          const key = st1D.scId || st1D.name || st1D.fullName;
+          const stComp = compStockMap[key] || compStockMap[st1D.name];
+          if (stComp && !sectorMap[s1D.name].stocks1D[key]){
+            sectorMap[s1D.name].stocks1D[key] = st1D;
+            sectorMap[s1D.name].stocksCompare[key] = stComp;
+          }
+        });
+      });
+    });
+
+    // Filter sectors with positive confluence in both timeframes
+    const allSectors = Object.values(sectorMap);
+    const qualifyingSectors = allSectors.filter(s => s.change1D >= thresh1D && s.changeCompare >= threshCompare)
+      .sort((a,b) => (b.change1D + b.changeCompare) - (a.change1D + a.changeCompare));
+
+    let totalConfluentStocks = 0;
+
+    if (!qualifyingSectors.length){
+      confluenceEls.statsRow.style.display = 'flex';
+      confluenceEls.statsRow.innerHTML = `
+        <div class="stat"><b>0</b><span>Confluent sectors (1D &ge; ${thresh1D}% &amp; ${period} &ge; ${threshCompare}%)</span></div>
+        <div class="stat"><b>${allSectors.length}</b><span>Total sectors scanned</span></div>
+        <div class="stat asof"><b>${latestAsOn || '—'}</b><span>As on</span></div>
+      `;
+      confluenceEls.grid.innerHTML = `
+        <div class="empty">
+          <b>No sector crossed both 1D (&ge;${thresh1D}%) and ${period} (&ge;${threshCompare}%)</b>
+          Try lowering the threshold values or switch the comparison period to see emerging trends.
+        </div>`;
+      return;
+    }
+
+    const html = qualifyingSectors.map(s => {
+      const keys = Object.keys(s.stocks1D);
+      const stockItems = keys.map(k => {
+        const st1D = s.stocks1D[k];
+        const stComp = s.stocksCompare[k];
+        return {
+          name: st1D.fullName || st1D.name,
+          shortName: st1D.name,
+          ltp: st1D.ltp,
+          url: st1D.url || '#',
+          change1D: st1D.changeP,
+          changeCompare: stComp.changeP,
+          isConfluent: st1D.changeP >= stockThresh && stComp.changeP >= stockThresh,
+          score: st1D.changeP + stComp.changeP
+        };
+      });
+
+      // Filter stocks that are positive and meet stock threshold in both periods
+      const qualStocks = stockItems.filter(x => x.isConfluent).sort((a,b) => b.score - a.score);
+      totalConfluentStocks += qualStocks.length;
+
+      const stockRows = qualStocks.length
+        ? qualStocks.map(st => `
+            <a class="confluence-stock-item" href="${st.url}" target="_blank" rel="noopener">
+              <div class="stock-left">
+                <span class="stock-name">${st.name}</span>
+                <span class="stock-ltp">₹${fmtNum(st.ltp)}</span>
+              </div>
+              <div class="confluence-stock-metrics">
+                <span class="confluence-stat-box day">1D +${st.change1D.toFixed(2)}%</span>
+                <span class="confluence-stat-box compare">${period} +${st.changeCompare.toFixed(2)}%</span>
+              </div>
+            </a>
+          `).join('')
+        : `<div class="no-stocks">No single stock crossed both 1D and ${period} &ge; ${stockThresh}% — sector move is broadly shared.</div>`;
+
+      const indicesBadge = Array.from(s.indices).join(', ');
+      const sampleTag = confluenceIsSample ? '<span class="sample-flag" style="margin-left:6px;">Sample</span>' : '';
+
+      return `
+        <div class="confluence-card">
+          <div class="confluence-card-top">
+            <div>
+              <div class="confluence-sector-title">${s.name}${sampleTag}</div>
+              <div class="card-count" style="margin-top:2px;">${qualStocks.length} confluent stocks &nbsp;·&nbsp; ${indicesBadge}</div>
+            </div>
+            <div class="confluence-dual-changes">
+              <span class="confluence-pill-tag day" title="1-Day Gain">1D +${s.change1D.toFixed(2)}%</span>
+              <span class="confluence-pill-tag compare" title="${period} Gain">${period} +${s.changeCompare.toFixed(2)}%</span>
+            </div>
+          </div>
+          <div class="heatbar" style="margin-top:8px;">
+            <div class="heatbar-fill up" style="width:100%;"></div>
+          </div>
+          <div class="confluence-stock-table">
+            ${stockRows}
+          </div>
+        </div>`;
+    }).join('');
+
+    confluenceEls.statsRow.style.display = 'flex';
+    confluenceEls.statsRow.innerHTML = `
+      <div class="stat"><b>${qualifyingSectors.length}</b><span>Confluent sectors (1D &amp; ${period})</span></div>
+      <div class="stat"><b>${totalConfluentStocks}</b><span>Confluent stocks past ${stockThresh}%</span></div>
+      <div class="stat"><b>1D vs ${period}</b><span>Comparison mode</span></div>
+      <div class="stat asof"><b>${latestAsOn || '—'}</b><span>As on</span></div>
+    `;
+    confluenceEls.grid.innerHTML = html;
+  }
+
+  async function fetchConfluenceLive(){
+    const targetIds = getTargetIndices();
+    const period = confluenceEls.comparePeriod.value;
+    const names = targetIds.map(id => INDEX_NAMES[id] || id).join(', ');
+    showConfluenceBanner(`Fetching 1D and ${period} data for ${names} …`);
+
+    const results1D = {};
+    const resultsCompare = {};
+    let lastError = null;
+
+    for (const id of targetIds){
+      try {
+        // 1D request
+        const res1D = await fetch(buildUrlWithPeriod(id, '1D'), { headers: { 'accept': 'application/json, text/plain, */*' } });
+        if (!res1D.ok) throw new Error(`1D HTTP ${res1D.status}`);
+        results1D[id] = await res1D.json();
+      } catch (err) {
+        lastError = err;
+      }
+      await new Promise(r => setTimeout(r, 120));
+
+      try {
+        // Compare period request (5D or 1M)
+        const resComp = await fetch(buildUrlWithPeriod(id, period), { headers: { 'accept': 'application/json, text/plain, */*' } });
+        if (!resComp.ok) throw new Error(`${period} HTTP ${resComp.status}`);
+        resultsCompare[id] = await resComp.json();
+      } catch (err) {
+        lastError = err;
+      }
+      await new Promise(r => setTimeout(r, 120));
+    }
+
+    const gotCount = Object.keys(results1D).length;
+    if (!gotCount){
+      const usingProxy = !!(els.proxyUrl.value || '').trim();
+      showConfluenceBanner(
+        usingProxy
+        ? `Couldn't reach the proxy. Is <code>node server.js</code> running? <span style="opacity:.7">(${lastError && lastError.message})</span>`
+        : `Requests were blocked by CORS. Set <b>Proxy base URL</b> to <code>http://localhost:3001</code> and run proxy server. <span style="opacity:.7">(${lastError && lastError.message})</span>`,
+        true
+      );
+      return;
+    }
+
+    confluence1DPayloads = results1D;
+    confluenceComparePayloads = resultsCompare;
+    confluenceIsSample = false;
+    hideConfluenceBanner();
+    renderConfluence();
+  }
+
+  function makeDerivedSampleData(base, multiplier, customMap = {}){
+    const cloned = JSON.parse(JSON.stringify(base));
+    if (cloned.data && cloned.data.chartData){
+      cloned.data.chartData.forEach(item => {
+        const custom = customMap[item.name] || customMap[item.fullName];
+        if (custom !== undefined){
+          item.changeP = custom;
+          item.value = Math.abs(custom);
+        } else {
+          item.changeP = +(item.changeP * multiplier).toFixed(2);
+          item.value = Math.abs(item.changeP);
+        }
+        if (item.changeP > 0) item.color = '#84F0AC';
+        else if (item.changeP < 0) item.color = '#FDC5CA';
+        else item.color = '#CBCBCB';
+      });
+    }
+    return cloned;
+  }
+
+  function loadConfluenceSample(){
+    const period = confluenceEls.comparePeriod.value;
+    const targetIds = MULTI_INDEX_ORDER;
+    const res1D = {};
+    const resComp = {};
+
+    const custom5D = {
+      "Metals & Mining": 4.85, "JSW Steel": 6.80, "Hindalco": 5.90, "Tata Steel": 4.10, "Coal India": 2.10,
+      "Agri": 3.40, "TATA Cons. Prod": 3.80,
+      "Software & IT Services": 2.65, "HCL Tech": 3.90, "Infosys": 2.80, "TCS": 2.10,
+      "Healthcare": 1.95, "Dr Reddys Labs": 3.50, "Sun Pharma": 2.10, "Cipla": 1.60
+    };
+
+    const custom1M = {
+      "Metals & Mining": 8.90, "JSW Steel": 11.80, "Hindalco": 9.60, "Tata Steel": 7.40, "Coal India": 4.30,
+      "Agri": 5.80, "TATA Cons. Prod": 6.90,
+      "Software & IT Services": 4.80, "HCL Tech": 7.20, "Infosys": 5.40, "TCS": 3.80,
+      "Healthcare": 3.60, "Dr Reddys Labs": 5.80, "Sun Pharma": 4.10, "Cipla": 2.90
+    };
+
+    const sampleComp = period === '1M'
+      ? makeDerivedSampleData(SAMPLE_DATA, 2.5, custom1M)
+      : makeDerivedSampleData(SAMPLE_DATA, 1.8, custom5D);
+
+    targetIds.forEach(id => {
+      res1D[id] = SAMPLE_DATA;
+      resComp[id] = sampleComp;
+    });
+
+    confluence1DPayloads = res1D;
+    confluenceComparePayloads = resComp;
+    confluenceIsSample = true;
+    hideConfluenceBanner();
+    renderConfluence();
+  }
+
+  confluenceEls.btnFetch.addEventListener('click', fetchConfluenceLive);
+  confluenceEls.btnSample.addEventListener('click', loadConfluenceSample);
+  [confluenceEls.indexId, confluenceEls.thresh1D, confluenceEls.threshCompare, confluenceEls.stockThresh].forEach(el => {
+    el.addEventListener('input', () => {
+      if (Object.keys(confluence1DPayloads).length) renderConfluence();
+    });
+  });
+
   // Bundled sample snapshot (Nifty 50, indexId 9, 24 Aug 2026) so the layout can be explored without a live/pasted response.
   const SAMPLE_DATA = {
     "success": 1,
@@ -1176,6 +1711,7 @@
   multiIsSample = true;
   renderMulti();
   renderSummary();
+  loadConfluenceSample();
 })();
 </script>
 
