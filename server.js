@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Sector Momentum Dashboard & MoneyControl API Proxy Server
- * Serves both the frontend dashboard and the API proxy.
+ * Serves both the frontend dashboard HTML and the API proxy.
  * Zero external npm dependencies (pure Node.js standard library).
  */
 
@@ -11,6 +11,29 @@ const fs = require('fs');
 const path = require('path');
 
 const PORT = process.env.PORT || 3001;
+
+// Load dashboard HTML into memory on startup
+function loadDashboardHtml() {
+  const candidates = [
+    path.join(__dirname, 'index.html'),
+    path.join(__dirname, 'sector-momentum-dashboard (2).html'),
+    path.join(__dirname, 'sector-momentum-dashboard.html')
+  ];
+  for (const file of candidates) {
+    if (fs.existsSync(file)) {
+      try {
+        const content = fs.readFileSync(file, 'utf8');
+        console.log(`[Dashboard] Loaded UI from: ${path.basename(file)} (${(content.length / 1024).toFixed(1)} KB)`);
+        return content;
+      } catch (err) {
+        console.error(`[Dashboard] Error reading ${file}:`, err.message);
+      }
+    }
+  }
+  return '<h1>Dashboard HTML file not found</h1><p>Please ensure index.html exists in the application root.</p>';
+}
+
+let cachedHtml = loadDashboardHtml();
 
 function fetchHeatMap({ indexId = '9', period = '1D', type = 'MM', subType = 'SE' }) {
   return new Promise((resolve, reject) => {
@@ -35,18 +58,6 @@ function fetchHeatMap({ indexId = '9', period = '1D', type = 'MM', subType = 'SE
   });
 }
 
-function getHtmlFilePath() {
-  const candidates = [
-    path.join(__dirname, 'index.html'),
-    path.join(__dirname, 'sector-momentum-dashboard (2).html'),
-    path.join(__dirname, 'sector-momentum-dashboard.html')
-  ];
-  for (const file of candidates) {
-    if (fs.existsSync(file)) return file;
-  }
-  return null;
-}
-
 const server = http.createServer(async (req, res) => {
   const reqUrl = new URL(req.url, `http://localhost:${PORT}`);
 
@@ -60,21 +71,16 @@ const server = http.createServer(async (req, res) => {
     return res.end();
   }
 
-  // Health check endpoint for Docker / cloud platforms
+  // Healthcheck endpoint
   if (reqUrl.pathname === '/healthz' || reqUrl.pathname === '/api/health') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     return res.end(JSON.stringify({ status: 'ok', time: new Date().toISOString() }));
   }
 
-  // Serve Frontend Dashboard HTML
-  if (reqUrl.pathname === '/' || reqUrl.pathname === '/index.html') {
-    const htmlPath = getHtmlFilePath();
-    if (htmlPath) {
-      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-      return fs.createReadStream(htmlPath).pipe(res);
-    }
-    res.writeHead(404, { 'Content-Type': 'text/plain' });
-    return res.end('Dashboard HTML file not found.');
+  // Favicon empty response
+  if (reqUrl.pathname === '/favicon.ico') {
+    res.writeHead(204);
+    return res.end();
   }
 
   // API Proxy for MoneyControl HeatMap
@@ -84,15 +90,22 @@ const server = http.createServer(async (req, res) => {
       const body = await fetchHeatMap(params);
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(body);
+      console.log(`[Proxy] 200 OK -> /api/heat-map indexId=${params.indexId || '9'} period=${params.period || '1D'}`);
     } catch (err) {
       res.writeHead(502, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'Upstream fetch failed', detail: err.message }));
+      console.error(`[Proxy] 502 Bad Gateway -> ${err.message}`);
     }
     return;
   }
 
-  res.writeHead(404, { 'Content-Type': 'application/json' });
-  res.end(JSON.stringify({ error: 'Not found' }));
+  // Serve Frontend Dashboard HTML for root or any page route
+  res.writeHead(200, {
+    'Content-Type': 'text/html; charset=utf-8',
+    'Cache-Control': 'no-cache'
+  });
+  res.end(cachedHtml);
+  console.log(`[Dashboard] 200 OK -> ${reqUrl.pathname}`);
 });
 
 server.listen(PORT, '0.0.0.0', () => {
