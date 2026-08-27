@@ -716,6 +716,7 @@
       <option value="1D" selected>1D — Today</option>
       <option value="5D">5D — 5 Days</option>
       <option value="1M">1M — 1 Month</option>
+      <option value="3M">3M — 3 Months</option>
     </select>
     <span class="hint">applies to all sections</span>
   </div>
@@ -815,14 +816,14 @@
 
 <div id="multiIndexSummaryList"></div>
 
-<!-- ===== Dual-Timeframe Momentum Confluence (1D vs 5D / 1M) ===== -->
+<!-- ===== Dual-Timeframe Momentum Confluence ===== -->
 <section class="confluence-section-header">
   <div style="display:flex; align-items:center; gap:10px; margin-bottom:6px; flex-wrap:wrap;">
     <p class="eyebrow" style="margin:0;">Multi-Timeframe Trend Screener</p>
-    <span class="confluence-badge">⚡ 1D vs 5D / 1M Confluence</span>
+    <span class="confluence-badge">⚡ Short-Term vs Long-Term Confluence</span>
   </div>
   <h2>Dual-Timeframe Momentum Confluence</h2>
-  <p class="subhead">Compare 1-day momentum against 5-day or 1-month trends. Highlights sectors and individual stocks that are trending positively in <b>both</b> timeframes.</p>
+  <p class="subhead">Compare short-term momentum (1D / 5D) against medium-to-long-term trends (5D / 1M / 3M). Highlights sectors and individual stocks that are trending positively in <b>both</b> timeframes.</p>
 </section>
 
 <div class="controls" id="confluenceControls">
@@ -839,17 +840,26 @@
     <span class="hint">scan scope</span>
   </div>
   <div class="field">
-    <label for="confluenceComparePeriod">Compare 1D vs</label>
+    <label for="confluenceBasePeriod">Short-Term (Base)</label>
+    <select id="confluenceBasePeriod">
+      <option value="1D" selected>1D — Today</option>
+      <option value="5D">5D — 5 Days</option>
+    </select>
+    <span class="hint">base period</span>
+  </div>
+  <div class="field">
+    <label for="confluenceComparePeriod">Long-Term (Compare)</label>
     <select id="confluenceComparePeriod">
       <option value="5D" selected>5D — 5 Days</option>
       <option value="1M">1M — 1 Month</option>
+      <option value="3M">3M — 3 Months</option>
     </select>
-    <span class="hint">secondary period</span>
+    <span class="hint">compare against</span>
   </div>
   <div class="field">
-    <label for="confluence1DThresh">1D Sector thresh %</label>
-    <input type="number" id="confluence1DThresh" value="1.0" step="0.1" min="0">
-    <span class="hint">1D change ≥ this</span>
+    <label for="confluenceBaseThresh" id="lblConfluenceBaseThresh">1D Sector thresh %</label>
+    <input type="number" id="confluenceBaseThresh" value="1.0" step="0.1" min="0">
+    <span class="hint" id="hintConfluenceBaseThresh">1D change ≥ this</span>
   </div>
   <div class="field">
     <label for="confluenceCompareThresh" id="lblConfluenceCompareThresh">5D Sector thresh %</label>
@@ -859,7 +869,7 @@
   <div class="field">
     <label for="confluenceStockThresh">Stock thresh %</label>
     <input type="number" id="confluenceStockThresh" value="1.0" step="0.1" min="0">
-    <span class="hint">1D & compare ≥ this</span>
+    <span class="hint">both periods ≥ this</span>
   </div>
   <div class="field btn-field">
     <label>Actions</label>
@@ -1285,12 +1295,15 @@
   btnSummaryRefresh.addEventListener('click', renderSummary);
   summaryThreshInp.addEventListener('input', renderSummary);
 
-  // ---------- Dual-Timeframe Confluence Scanner (1D vs 5D / 1M) ----------
+  // ---------- Dual-Timeframe Confluence Scanner (Short vs Long Term) ----------
   const confluenceEls = {
     indexId: document.getElementById('confluenceIndexId'),
+    basePeriod: document.getElementById('confluenceBasePeriod'),
     comparePeriod: document.getElementById('confluenceComparePeriod'),
-    thresh1D: document.getElementById('confluence1DThresh'),
+    threshBase: document.getElementById('confluenceBaseThresh'),
     threshCompare: document.getElementById('confluenceCompareThresh'),
+    lblThreshBase: document.getElementById('lblConfluenceBaseThresh'),
+    hintThreshBase: document.getElementById('hintConfluenceBaseThresh'),
     lblThreshCompare: document.getElementById('lblConfluenceCompareThresh'),
     hintThreshCompare: document.getElementById('hintConfluenceCompareThresh'),
     stockThresh: document.getElementById('confluenceStockThresh'),
@@ -1302,8 +1315,8 @@
     grid: document.getElementById('confluenceGrid'),
   };
 
-  let confluence1DPayloads = {};      // indexId -> 1D payload
-  let confluenceComparePayloads = {}; // indexId -> 5D/1M payload
+  let confluenceBasePayloads = {};    // indexId -> basePeriod payload (1D or 5D)
+  let confluenceComparePayloads = {}; // indexId -> comparePeriod payload (5D, 1M, or 3M)
   let confluenceIsSample = false;
 
   function showConfluenceBanner(html, warn){
@@ -1314,18 +1327,42 @@
   function hideConfluenceBanner(){ confluenceEls.bannerWrap.style.display = 'none'; }
 
   function updateConfluenceLabels(){
-    const period = confluenceEls.comparePeriod.value;
-    confluenceEls.lblThreshCompare.textContent = `${period} Sector thresh %`;
-    confluenceEls.hintThreshCompare.textContent = `${period} change ≥ this`;
+    const baseP = confluenceEls.basePeriod.value;
+    const compP = confluenceEls.comparePeriod.value;
+
+    confluenceEls.lblThreshBase.textContent = `${baseP} Sector thresh %`;
+    confluenceEls.hintThreshBase.textContent = `${baseP} change ≥ this`;
+
+    confluenceEls.lblThreshCompare.textContent = `${compP} Sector thresh %`;
+    confluenceEls.hintThreshCompare.textContent = `${compP} change ≥ this`;
+
+    // Ensure compare options make sense based on base
+    const opt5D = confluenceEls.comparePeriod.querySelector('option[value="5D"]');
+    if (baseP === '5D') {
+      if (opt5D) opt5D.disabled = true;
+      if (confluenceEls.comparePeriod.value === '5D') {
+        confluenceEls.comparePeriod.value = '1M';
+        confluenceEls.lblThreshCompare.textContent = `1M Sector thresh %`;
+        confluenceEls.hintThreshCompare.textContent = `1M change ≥ this`;
+      }
+    } else {
+      if (opt5D) opt5D.disabled = false;
+    }
   }
+
+  confluenceEls.basePeriod.addEventListener('change', () => {
+    updateConfluenceLabels();
+    if (Object.keys(confluenceBasePayloads).length) {
+      if (confluenceIsSample) loadConfluenceSample();
+      else fetchConfluenceLive();
+    }
+  });
+
   confluenceEls.comparePeriod.addEventListener('change', () => {
     updateConfluenceLabels();
-    if (Object.keys(confluence1DPayloads).length) {
-      if (confluenceIsSample) {
-        loadConfluenceSample();
-      } else {
-        fetchConfluenceLive();
-      }
+    if (Object.keys(confluenceBasePayloads).length) {
+      if (confluenceIsSample) loadConfluenceSample();
+      else fetchConfluenceLive();
     }
   });
 
@@ -1346,57 +1383,58 @@
 
   function renderConfluence(){
     const targetIds = getTargetIndices();
-    const period = confluenceEls.comparePeriod.value;
-    const thresh1D = parseFloat(confluenceEls.thresh1D.value) || 0;
+    const baseP = confluenceEls.basePeriod.value;
+    const compP = confluenceEls.comparePeriod.value;
+    const threshBase = parseFloat(confluenceEls.threshBase.value) || 0;
     const threshCompare = parseFloat(confluenceEls.threshCompare.value) || 0;
     const stockThresh = parseFloat(confluenceEls.stockThresh.value) || 0;
 
     // Check if we have data for the target indices
-    const availableIds = targetIds.filter(id => confluence1DPayloads[id] && confluenceComparePayloads[id]);
+    const availableIds = targetIds.filter(id => confluenceBasePayloads[id] && confluenceComparePayloads[id]);
     if (!availableIds.length){
       confluenceEls.statsRow.style.display = 'none';
       confluenceEls.grid.innerHTML = `
         <div class="empty">
           <b>No confluence comparison data loaded yet</b>
-          Click <b>Fetch live comparison</b> or <b>Preview with sample data</b> above to scan sectors trending in both 1D and ${period}.
+          Click <b>Fetch live comparison</b> or <b>Preview with sample data</b> above to scan sectors trending in both ${baseP} and ${compP}.
         </div>`;
       return;
     }
 
     // Merge sectors across target indices
-    const sectorMap = {}; // sectorName -> { sector1D, sectorCompare, stocks1D: Map, stocksCompare: Map, indexNames: Set }
+    const sectorMap = {}; // sectorName -> { sectorBase, sectorCompare, stocksBase: Map, stocksCompare: Map, indexNames: Set }
     let latestAsOn = '';
 
     availableIds.forEach(id => {
-      const p1D = process(confluence1DPayloads[id]);
+      const pBase = process(confluenceBasePayloads[id]);
       const pComp = process(confluenceComparePayloads[id]);
-      if (p1D.asOnDate) latestAsOn = p1D.asOnDate.trim();
+      if (pBase.asOnDate) latestAsOn = pBase.asOnDate.trim();
 
       const indexLabel = INDEX_NAMES[id] || ('Index ' + id);
 
-      // Map 1D sectors & stocks
+      // Map base sectors & stocks
       const compSectorById = {};
       pComp.sectors.forEach(s => { compSectorById[s.id] = s; compSectorById[s.name] = s; });
 
-      p1D.sectors.forEach(s1D => {
-        const sComp = compSectorById[s1D.id] || compSectorById[s1D.name];
+      pBase.sectors.forEach(sBase => {
+        const sComp = compSectorById[sBase.id] || compSectorById[sBase.name];
         if (!sComp) return;
 
-        if (!sectorMap[s1D.name]){
-          sectorMap[s1D.name] = {
-            name: s1D.name,
-            change1D: s1D.changeP,
+        if (!sectorMap[sBase.name]){
+          sectorMap[sBase.name] = {
+            name: sBase.name,
+            changeBase: sBase.changeP,
             changeCompare: sComp.changeP,
-            totalStocks: s1D.totalStocks,
-            stocks1D: {},
+            totalStocks: sBase.totalStocks,
+            stocksBase: {},
             stocksCompare: {},
             indices: new Set()
           };
         }
-        sectorMap[s1D.name].indices.add(indexLabel);
+        sectorMap[sBase.name].indices.add(indexLabel);
 
         // Map stocks
-        const st1DList = p1D.bySector[s1D.id] || [];
+        const stBaseList = pBase.bySector[sBase.id] || [];
         const stCompList = pComp.bySector[sComp.id] || [];
         const compStockMap = {};
         stCompList.forEach(st => {
@@ -1405,12 +1443,12 @@
           compStockMap[st.name] = st;
         });
 
-        st1DList.forEach(st1D => {
-          const key = st1D.scId || st1D.name || st1D.fullName;
-          const stComp = compStockMap[key] || compStockMap[st1D.name];
-          if (stComp && !sectorMap[s1D.name].stocks1D[key]){
-            sectorMap[s1D.name].stocks1D[key] = st1D;
-            sectorMap[s1D.name].stocksCompare[key] = stComp;
+        stBaseList.forEach(stBase => {
+          const key = stBase.scId || stBase.name || stBase.fullName;
+          const stComp = compStockMap[key] || compStockMap[stBase.name];
+          if (stComp && !sectorMap[sBase.name].stocksBase[key]){
+            sectorMap[sBase.name].stocksBase[key] = stBase;
+            sectorMap[sBase.name].stocksCompare[key] = stComp;
           }
         });
       });
@@ -1418,40 +1456,40 @@
 
     // Filter sectors with positive confluence in both timeframes
     const allSectors = Object.values(sectorMap);
-    const qualifyingSectors = allSectors.filter(s => s.change1D >= thresh1D && s.changeCompare >= threshCompare)
-      .sort((a,b) => (b.change1D + b.changeCompare) - (a.change1D + a.changeCompare));
+    const qualifyingSectors = allSectors.filter(s => s.changeBase >= threshBase && s.changeCompare >= threshCompare)
+      .sort((a,b) => (b.changeBase + b.changeCompare) - (a.changeBase + a.changeCompare));
 
     let totalConfluentStocks = 0;
 
     if (!qualifyingSectors.length){
       confluenceEls.statsRow.style.display = 'flex';
       confluenceEls.statsRow.innerHTML = `
-        <div class="stat"><b>0</b><span>Confluent sectors (1D &ge; ${thresh1D}% &amp; ${period} &ge; ${threshCompare}%)</span></div>
+        <div class="stat"><b>0</b><span>Confluent sectors (${baseP} &ge; ${threshBase}% &amp; ${compP} &ge; ${threshCompare}%)</span></div>
         <div class="stat"><b>${allSectors.length}</b><span>Total sectors scanned</span></div>
         <div class="stat asof"><b>${latestAsOn || '—'}</b><span>As on</span></div>
       `;
       confluenceEls.grid.innerHTML = `
         <div class="empty">
-          <b>No sector crossed both 1D (&ge;${thresh1D}%) and ${period} (&ge;${threshCompare}%)</b>
-          Try lowering the threshold values or switch the comparison period to see emerging trends.
+          <b>No sector crossed both ${baseP} (&ge;${threshBase}%) and ${compP} (&ge;${threshCompare}%)</b>
+          Try lowering the threshold values or switch the comparison period to discover emerging trends.
         </div>`;
       return;
     }
 
     const html = qualifyingSectors.map(s => {
-      const keys = Object.keys(s.stocks1D);
+      const keys = Object.keys(s.stocksBase);
       const stockItems = keys.map(k => {
-        const st1D = s.stocks1D[k];
+        const stBase = s.stocksBase[k];
         const stComp = s.stocksCompare[k];
         return {
-          name: st1D.fullName || st1D.name,
-          shortName: st1D.name,
-          ltp: st1D.ltp,
-          url: st1D.url || '#',
-          change1D: st1D.changeP,
+          name: stBase.fullName || stBase.name,
+          shortName: stBase.name,
+          ltp: stBase.ltp,
+          url: stBase.url || '#',
+          changeBase: stBase.changeP,
           changeCompare: stComp.changeP,
-          isConfluent: st1D.changeP >= stockThresh && stComp.changeP >= stockThresh,
-          score: st1D.changeP + stComp.changeP
+          isConfluent: stBase.changeP >= stockThresh && stComp.changeP >= stockThresh,
+          score: stBase.changeP + stComp.changeP
         };
       });
 
@@ -1467,12 +1505,12 @@
                 <span class="stock-ltp">₹${fmtNum(st.ltp)}</span>
               </div>
               <div class="confluence-stock-metrics">
-                <span class="confluence-stat-box day">1D +${st.change1D.toFixed(2)}%</span>
-                <span class="confluence-stat-box compare">${period} +${st.changeCompare.toFixed(2)}%</span>
+                <span class="confluence-stat-box day">${baseP} +${st.changeBase.toFixed(2)}%</span>
+                <span class="confluence-stat-box compare">${compP} +${st.changeCompare.toFixed(2)}%</span>
               </div>
             </a>
           `).join('')
-        : `<div class="no-stocks">No single stock crossed both 1D and ${period} &ge; ${stockThresh}% — sector move is broadly shared.</div>`;
+        : `<div class="no-stocks">No single stock crossed both ${baseP} and ${compP} &ge; ${stockThresh}% — sector move is broadly shared.</div>`;
 
       const indicesBadge = Array.from(s.indices).join(', ');
       const sampleTag = confluenceIsSample ? '<span class="sample-flag" style="margin-left:6px;">Sample</span>' : '';
@@ -1485,8 +1523,8 @@
               <div class="card-count" style="margin-top:2px;">${qualStocks.length} confluent stocks &nbsp;·&nbsp; ${indicesBadge}</div>
             </div>
             <div class="confluence-dual-changes">
-              <span class="confluence-pill-tag day" title="1-Day Gain">1D +${s.change1D.toFixed(2)}%</span>
-              <span class="confluence-pill-tag compare" title="${period} Gain">${period} +${s.changeCompare.toFixed(2)}%</span>
+              <span class="confluence-pill-tag day" title="${baseP} Trend">${baseP} +${s.changeBase.toFixed(2)}%</span>
+              <span class="confluence-pill-tag compare" title="${compP} Trend">${compP} +${s.changeCompare.toFixed(2)}%</span>
             </div>
           </div>
           <div class="heatbar" style="margin-top:8px;">
@@ -1500,9 +1538,9 @@
 
     confluenceEls.statsRow.style.display = 'flex';
     confluenceEls.statsRow.innerHTML = `
-      <div class="stat"><b>${qualifyingSectors.length}</b><span>Confluent sectors (1D &amp; ${period})</span></div>
+      <div class="stat"><b>${qualifyingSectors.length}</b><span>Confluent sectors (${baseP} &amp; ${compP})</span></div>
       <div class="stat"><b>${totalConfluentStocks}</b><span>Confluent stocks past ${stockThresh}%</span></div>
-      <div class="stat"><b>1D vs ${period}</b><span>Comparison mode</span></div>
+      <div class="stat"><b>${baseP} vs ${compP}</b><span>Comparison mode</span></div>
       <div class="stat asof"><b>${latestAsOn || '—'}</b><span>As on</span></div>
     `;
     confluenceEls.grid.innerHTML = html;
@@ -1510,29 +1548,30 @@
 
   async function fetchConfluenceLive(){
     const targetIds = getTargetIndices();
-    const period = confluenceEls.comparePeriod.value;
+    const baseP = confluenceEls.basePeriod.value;
+    const compP = confluenceEls.comparePeriod.value;
     const names = targetIds.map(id => INDEX_NAMES[id] || id).join(', ');
-    showConfluenceBanner(`Fetching 1D and ${period} data for ${names} …`);
+    showConfluenceBanner(`Fetching ${baseP} and ${compP} data for ${names} …`);
 
-    const results1D = {};
+    const resultsBase = {};
     const resultsCompare = {};
     let lastError = null;
 
     for (const id of targetIds){
       try {
-        // 1D request
-        const res1D = await fetch(buildUrlWithPeriod(id, '1D'), { headers: { 'accept': 'application/json, text/plain, */*' } });
-        if (!res1D.ok) throw new Error(`1D HTTP ${res1D.status}`);
-        results1D[id] = await res1D.json();
+        // Base period request (1D or 5D)
+        const resBase = await fetch(buildUrlWithPeriod(id, baseP), { headers: { 'accept': 'application/json, text/plain, */*' } });
+        if (!resBase.ok) throw new Error(`${baseP} HTTP ${resBase.status}`);
+        resultsBase[id] = await resBase.json();
       } catch (err) {
         lastError = err;
       }
       await new Promise(r => setTimeout(r, 120));
 
       try {
-        // Compare period request (5D or 1M)
-        const resComp = await fetch(buildUrlWithPeriod(id, period), { headers: { 'accept': 'application/json, text/plain, */*' } });
-        if (!resComp.ok) throw new Error(`${period} HTTP ${resComp.status}`);
+        // Compare period request (5D, 1M, or 3M)
+        const resComp = await fetch(buildUrlWithPeriod(id, compP), { headers: { 'accept': 'application/json, text/plain, */*' } });
+        if (!resComp.ok) throw new Error(`${compP} HTTP ${resComp.status}`);
         resultsCompare[id] = await resComp.json();
       } catch (err) {
         lastError = err;
@@ -1540,7 +1579,7 @@
       await new Promise(r => setTimeout(r, 120));
     }
 
-    const gotCount = Object.keys(results1D).length;
+    const gotCount = Object.keys(resultsBase).length;
     if (!gotCount){
       const usingProxy = !!(els.proxyUrl.value || '').trim();
       showConfluenceBanner(
@@ -1552,7 +1591,7 @@
       return;
     }
 
-    confluence1DPayloads = results1D;
+    confluenceBasePayloads = resultsBase;
     confluenceComparePayloads = resultsCompare;
     confluenceIsSample = false;
     hideConfluenceBanner();
@@ -1579,11 +1618,8 @@
     return cloned;
   }
 
-  function loadConfluenceSample(){
-    const period = confluenceEls.comparePeriod.value;
-    const targetIds = MULTI_INDEX_ORDER;
-    const res1D = {};
-    const resComp = {};
+  function getSampleForPeriod(period){
+    if (period === '1D') return SAMPLE_DATA;
 
     const custom5D = {
       "Metals & Mining": 4.85, "JSW Steel": 6.80, "Hindalco": 5.90, "Tata Steel": 4.10, "Coal India": 2.10,
@@ -1599,16 +1635,35 @@
       "Healthcare": 3.60, "Dr Reddys Labs": 5.80, "Sun Pharma": 4.10, "Cipla": 2.90
     };
 
-    const sampleComp = period === '1M'
-      ? makeDerivedSampleData(SAMPLE_DATA, 2.5, custom1M)
-      : makeDerivedSampleData(SAMPLE_DATA, 1.8, custom5D);
+    const custom3M = {
+      "Metals & Mining": 14.50, "JSW Steel": 18.20, "Hindalco": 15.60, "Tata Steel": 12.10, "Coal India": 7.50,
+      "Agri": 9.40, "TATA Cons. Prod": 11.20,
+      "Software & IT Services": 8.20, "HCL Tech": 12.40, "Infosys": 9.10, "TCS": 6.50,
+      "Healthcare": 6.80, "Dr Reddys Labs": 9.50, "Sun Pharma": 7.20, "Cipla": 5.10
+    };
+
+    if (period === '5D') return makeDerivedSampleData(SAMPLE_DATA, 1.8, custom5D);
+    if (period === '1M') return makeDerivedSampleData(SAMPLE_DATA, 2.5, custom1M);
+    if (period === '3M') return makeDerivedSampleData(SAMPLE_DATA, 3.8, custom3M);
+    return SAMPLE_DATA;
+  }
+
+  function loadConfluenceSample(){
+    const baseP = confluenceEls.basePeriod.value;
+    const compP = confluenceEls.comparePeriod.value;
+    const targetIds = MULTI_INDEX_ORDER;
+    const resBase = {};
+    const resComp = {};
+
+    const sampleBase = getSampleForPeriod(baseP);
+    const sampleComp = getSampleForPeriod(compP);
 
     targetIds.forEach(id => {
-      res1D[id] = SAMPLE_DATA;
+      resBase[id] = sampleBase;
       resComp[id] = sampleComp;
     });
 
-    confluence1DPayloads = res1D;
+    confluenceBasePayloads = resBase;
     confluenceComparePayloads = resComp;
     confluenceIsSample = true;
     hideConfluenceBanner();
@@ -1617,9 +1672,9 @@
 
   confluenceEls.btnFetch.addEventListener('click', fetchConfluenceLive);
   confluenceEls.btnSample.addEventListener('click', loadConfluenceSample);
-  [confluenceEls.indexId, confluenceEls.thresh1D, confluenceEls.threshCompare, confluenceEls.stockThresh].forEach(el => {
+  [confluenceEls.indexId, confluenceEls.threshBase, confluenceEls.threshCompare, confluenceEls.stockThresh].forEach(el => {
     el.addEventListener('input', () => {
-      if (Object.keys(confluence1DPayloads).length) renderConfluence();
+      if (Object.keys(confluenceBasePayloads).length) renderConfluence();
     });
   });
 
