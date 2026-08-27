@@ -1034,17 +1034,65 @@
   }
   function fmtNum(n){ return Number(n).toLocaleString('en-IN', {maximumFractionDigits:2}); }
 
+  function normalizeSectorName(name){
+    if (!name) return '';
+    return String(name)
+      .replace(/&amp;/g, '&')
+      .replace(/&/g, ' and ')
+      .toLowerCase()
+      .replace(/jewel+ery/g, 'jewellery')
+      .replace(/[^a-z0-9]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  function extractStockCode(url){
+    if (!url) return '';
+    const parts = url.split('?')[0].split('#')[0].split('/').filter(Boolean);
+    return parts.length ? parts[parts.length - 1].toUpperCase() : '';
+  }
+
+  function normStockKey(str){
+    if (!str) return '';
+    return String(str).toLowerCase().replace(/[^a-z0-9]/g, '');
+  }
+
   function process(payload){
     const list = (payload && payload.data && payload.data.chartData) || [];
     const sectors = list.filter(x => x.totalStocks !== undefined && x.parent === undefined);
-    const stocks = list.filter(x => x.parent !== undefined);
+    const stocks = list.filter(x => x.parent !== undefined || (x.sector && x.totalStocks === undefined));
     const bySector = {};
+    const sectorById = {};
+    sectors.forEach(s => {
+      if (s.id !== undefined) sectorById[String(s.id)] = s;
+    });
+
     stocks.forEach(s => {
-      if (!bySector[s.parent]) bySector[s.parent] = [];
-      bySector[s.parent].push(s);
+      if (s.parent !== undefined) {
+        const pKey = String(s.parent);
+        if (!bySector[pKey]) bySector[pKey] = [];
+        bySector[pKey].push(s);
+
+        const parentSec = sectorById[pKey];
+        if (parentSec && parentSec.name) {
+          const normP = normalizeSectorName(parentSec.name);
+          if (!bySector[normP]) bySector[normP] = [];
+          if (!bySector[normP].includes(s)) bySector[normP].push(s);
+        }
+      }
+      if (s.sector) {
+        const rawSec = s.sector.trim();
+        if (!bySector[rawSec]) bySector[rawSec] = [];
+        if (!bySector[rawSec].includes(s)) bySector[rawSec].push(s);
+
+        const normSec = normalizeSectorName(s.sector);
+        if (!bySector[normSec]) bySector[normSec] = [];
+        if (!bySector[normSec].includes(s)) bySector[normSec].push(s);
+      }
     });
     return {
       sectors,
+      stocks,
       bySector,
       asOnDate: payload && payload.data && payload.data.asOnDate
     };
@@ -1093,7 +1141,7 @@
 
     const html = qualifying.map(s => {
       const dir = s.changeP > 0 ? 'up' : 'down';
-      const stocksIn = (bySector[s.id] || []).slice().sort((a,b) => positiveOnly ? b.changeP - a.changeP : Math.abs(b.changeP) - Math.abs(a.changeP));
+      const stocksIn = (bySector[s.id] || bySector[normalizeSectorName(s.name)] || bySector[s.name] || []).slice().sort((a,b) => positiveOnly ? b.changeP - a.changeP : Math.abs(b.changeP) - Math.abs(a.changeP));
       const qualStocks = stocksIn.filter(x => positiveOnly ? x.changeP >= stockThresh : Math.abs(x.changeP) >= stockThresh);
       qualStockCount += qualStocks.length;
       const width = Math.min(100, (Math.abs(s.changeP) / maxAbs) * 100);
@@ -1401,8 +1449,31 @@
       return;
     }
 
+    // Helper to get all stocks for a sector from a processed payload
+    function getSectorStocks(pData, sector){
+      if (!pData || !sector) return [];
+      const sId = sector.id !== undefined ? String(sector.id) : null;
+      const sNorm = normalizeSectorName(sector.name);
+
+      const fromId = (sId && pData.bySector && pData.bySector[sId]) || [];
+      const fromNorm = (sNorm && pData.bySector && pData.bySector[sNorm]) || [];
+      const fromRaw = (sector.name && pData.bySector && pData.bySector[sector.name]) || [];
+      const fromDirect = (pData.stocks || []).filter(st =>
+        (sId && st.parent !== undefined && String(st.parent) === sId) ||
+        (st.sector && normalizeSectorName(st.sector) === sNorm)
+      );
+
+      // Merge and deduplicate by stock unique identifier
+      const stockMap = new Map();
+      [...fromId, ...fromNorm, ...fromRaw, ...fromDirect].forEach(st => {
+        const idKey = (st.scId || extractStockCode(st.url) || normStockKey(st.fullName || st.name) || '').toUpperCase();
+        if (idKey && !stockMap.has(idKey)) stockMap.set(idKey, st);
+      });
+      return Array.from(stockMap.values());
+    }
+
     // Merge sectors across target indices
-    const sectorMap = {}; // sectorName -> { sectorBase, sectorCompare, stocksBase: Map, stocksCompare: Map, indexNames: Set }
+    const sectorMap = {}; // normSectorKey -> { name, normKey, changeBase, changeCompare, totalStocks, stocks: {}, indices: Set }
     let latestAsOn = '';
 
     availableIds.forEach(id => {
@@ -1412,43 +1483,90 @@
 
       const indexLabel = INDEX_NAMES[id] || ('Index ' + id);
 
-      // Map base sectors & stocks
-      const compSectorById = {};
-      pComp.sectors.forEach(s => { compSectorById[s.id] = s; compSectorById[s.name] = s; });
+      // Index compare sectors by normalized sector name ONLY — never by ID (which is just response rank)
+      const compSectorByNorm = {};
+      pComp.sectors.forEach(s => {
+        if (s.name) {
+          const normKey = normalizeSectorName(s.name);
+          if (normKey) compSectorByNorm[normKey] = s;
+        }
+      });
 
       pBase.sectors.forEach(sBase => {
-        const sComp = compSectorById[sBase.id] || compSectorById[sBase.name];
-        if (!sComp) return;
+        if (!sBase.name) return;
+        const normKey = normalizeSectorName(sBase.name);
+        if (!normKey) return;
 
-        if (!sectorMap[sBase.name]){
-          sectorMap[sBase.name] = {
-            name: sBase.name,
+        // Match strictly by normalized sector name
+        const sComp = compSectorByNorm[normKey];
+        if (!sComp) return; // Must have matching sector in compare period
+
+        const secName = sBase.name.trim();
+        if (!sectorMap[normKey]){
+          sectorMap[normKey] = {
+            name: secName,
+            normKey: normKey,
             changeBase: sBase.changeP,
             changeCompare: sComp.changeP,
-            totalStocks: sBase.totalStocks,
-            stocksBase: {},
-            stocksCompare: {},
+            totalStocks: sBase.totalStocks || sComp.totalStocks || 0,
+            stocks: {}, // stockKey -> { name, shortName, ltp, url, changeBase, changeCompare, score, scId }
             indices: new Set()
           };
         }
-        sectorMap[sBase.name].indices.add(indexLabel);
+        sectorMap[normKey].indices.add(indexLabel);
 
-        // Map stocks
-        const stBaseList = pBase.bySector[sBase.id] || [];
-        const stCompList = pComp.bySector[sComp.id] || [];
-        const compStockMap = {};
+        // Map stocks for this sector
+        const stBaseList = getSectorStocks(pBase, sBase);
+        const stCompList = getSectorStocks(pComp, sComp);
+
+        // Build compare stock lookup map
+        const compStockMap = new Map();
         stCompList.forEach(st => {
-          const key = st.scId || st.name || st.fullName;
-          compStockMap[key] = st;
-          compStockMap[st.name] = st;
+          if (st.scId) compStockMap.set('SC_' + st.scId.trim().toUpperCase(), st);
+          const uCode = extractStockCode(st.url);
+          if (uCode) compStockMap.set('URL_' + uCode, st);
+          if (st.fullName) compStockMap.set('FN_' + normStockKey(st.fullName), st);
+          if (st.name) compStockMap.set('NM_' + normStockKey(st.name), st);
         });
 
         stBaseList.forEach(stBase => {
-          const key = stBase.scId || stBase.name || stBase.fullName;
-          const stComp = compStockMap[key] || compStockMap[stBase.name];
-          if (stComp && !sectorMap[sBase.name].stocksBase[key]){
-            sectorMap[sBase.name].stocksBase[key] = stBase;
-            sectorMap[sBase.name].stocksCompare[key] = stComp;
+          let stComp = null;
+          if (stBase.scId) stComp = compStockMap.get('SC_' + stBase.scId.trim().toUpperCase());
+          if (!stComp && stBase.url) {
+            const uCode = extractStockCode(stBase.url);
+            if (uCode) stComp = compStockMap.get('URL_' + uCode) || compStockMap.get('SC_' + uCode);
+          }
+          if (!stComp && stBase.fullName) {
+            stComp = compStockMap.get('FN_' + normStockKey(stBase.fullName)) || compStockMap.get('NM_' + normStockKey(stBase.fullName));
+          }
+          if (!stComp && stBase.name) {
+            stComp = compStockMap.get('NM_' + normStockKey(stBase.name)) || compStockMap.get('FN_' + normStockKey(stBase.name));
+          }
+          // Loose matching fallback within sector stocks
+          if (!stComp) {
+            const bKey = normStockKey(stBase.name || stBase.fullName);
+            if (bKey.length >= 3) {
+              stComp = stCompList.find(c => {
+                const cKey = normStockKey(c.name || c.fullName);
+                return cKey.length >= 3 && (cKey.includes(bKey) || bKey.includes(cKey));
+              });
+            }
+          }
+
+          const stockKey = (stBase.scId || extractStockCode(stBase.url) || normStockKey(stBase.fullName || stBase.name)).toUpperCase();
+          if (stockKey && !sectorMap[normKey].stocks[stockKey]){
+            const compChange = (stComp && stComp.changeP !== undefined) ? stComp.changeP : null;
+            const baseChange = stBase.changeP !== undefined ? stBase.changeP : 0;
+            sectorMap[normKey].stocks[stockKey] = {
+              name: stBase.fullName || stBase.name || (stComp && (stComp.fullName || stComp.name)),
+              shortName: stBase.name || (stComp && stComp.name),
+              ltp: stBase.ltp || (stComp && stComp.ltp) || 0,
+              url: stBase.url || (stComp && stComp.url) || '#',
+              changeBase: baseChange,
+              changeCompare: compChange,
+              score: baseChange + (compChange !== null ? compChange : 0),
+              scId: stBase.scId || (stComp && stComp.scId) || ''
+            };
           }
         });
       });
@@ -1477,40 +1595,61 @@
     }
 
     const html = qualifyingSectors.map(s => {
-      const keys = Object.keys(s.stocksBase);
-      const stockItems = keys.map(k => {
-        const stBase = s.stocksBase[k];
-        const stComp = s.stocksCompare[k];
-        return {
-          name: stBase.fullName || stBase.name,
-          shortName: stBase.name,
-          ltp: stBase.ltp,
-          url: stBase.url || '#',
-          changeBase: stBase.changeP,
-          changeCompare: stComp.changeP,
-          isConfluent: stBase.changeP >= stockThresh && stComp.changeP >= stockThresh,
-          score: stBase.changeP + stComp.changeP
-        };
-      });
+      const allSectorStocks = Object.values(s.stocks);
 
-      // Filter stocks that are positive and meet stock threshold in both periods
-      const qualStocks = stockItems.filter(x => x.isConfluent).sort((a,b) => b.score - a.score);
-      totalConfluentStocks += qualStocks.length;
+      // 1. Strict confluent stocks: stocks meeting stockThresh in BOTH timeframes
+      const strictConfluentStocks = allSectorStocks
+        .filter(st => st.changeBase >= stockThresh && st.changeCompare !== null && st.changeCompare >= stockThresh)
+        .sort((a,b) => b.score - a.score);
+
+      // 2. Positive in both timeframes
+      const positiveBothStocks = allSectorStocks
+        .filter(st => st.changeBase > 0 && st.changeCompare !== null && st.changeCompare > 0)
+        .sort((a,b) => b.score - a.score);
+
+      // 3. Positive in base period
+      const positiveBaseStocks = allSectorStocks
+        .filter(st => st.changeBase > 0)
+        .sort((a,b) => b.score - a.score);
+
+      totalConfluentStocks += strictConfluentStocks.length;
+
+      let qualStocks = [];
+      let subDesc = '';
+      if (strictConfluentStocks.length > 0) {
+        qualStocks = strictConfluentStocks;
+        subDesc = `${strictConfluentStocks.length} stock${strictConfluentStocks.length===1?'':'s'} past ${stockThresh}% in both timeframes`;
+      } else if (positiveBothStocks.length > 0) {
+        qualStocks = positiveBothStocks;
+        subDesc = `${positiveBothStocks.length} stock${positiveBothStocks.length===1?'':'s'} positive in both timeframes (<${stockThresh}% thresh)`;
+      } else if (positiveBaseStocks.length > 0) {
+        qualStocks = positiveBaseStocks;
+        subDesc = `${positiveBaseStocks.length} stock${positiveBaseStocks.length===1?'':'s'} positive in ${baseP}`;
+      } else {
+        qualStocks = allSectorStocks.slice(0, 10);
+        subDesc = `${allSectorStocks.length} stock${allSectorStocks.length===1?'':'s'} in sector`;
+      }
 
       const stockRows = qualStocks.length
-        ? qualStocks.map(st => `
-            <a class="confluence-stock-item" href="${st.url}" target="_blank" rel="noopener">
-              <div class="stock-left">
-                <span class="stock-name">${st.name}</span>
-                <span class="stock-ltp">₹${fmtNum(st.ltp)}</span>
-              </div>
-              <div class="confluence-stock-metrics">
-                <span class="confluence-stat-box day">${baseP} +${st.changeBase.toFixed(2)}%</span>
-                <span class="confluence-stat-box compare">${compP} +${st.changeCompare.toFixed(2)}%</span>
-              </div>
-            </a>
-          `).join('')
-        : `<div class="no-stocks">No single stock crossed both ${baseP} and ${compP} &ge; ${stockThresh}% — sector move is broadly shared.</div>`;
+        ? qualStocks.map(st => {
+            const baseDir = st.changeBase >= 0 ? 'day' : 'down';
+            const compDir = (st.changeCompare !== null && st.changeCompare >= 0) ? 'compare' : 'down';
+            const compText = st.changeCompare !== null
+              ? `${compP} ${st.changeCompare >= 0 ? '+' : ''}${st.changeCompare.toFixed(2)}%`
+              : `${compP} —`;
+            return `
+              <a class="confluence-stock-item" href="${st.url}" target="_blank" rel="noopener">
+                <div class="stock-left">
+                  <span class="stock-name">${st.name}</span>
+                  <span class="stock-ltp">₹${fmtNum(st.ltp)}</span>
+                </div>
+                <div class="confluence-stock-metrics">
+                  <span class="confluence-stat-box ${baseDir}">${baseP} ${st.changeBase >= 0 ? '+' : ''}${st.changeBase.toFixed(2)}%</span>
+                  <span class="confluence-stat-box ${compDir}">${compText}</span>
+                </div>
+              </a>`;
+          }).join('')
+        : `<div class="no-stocks">No stock data available for this sector in selected periods.</div>`;
 
       const indicesBadge = Array.from(s.indices).join(', ');
       const sampleTag = confluenceIsSample ? '<span class="sample-flag" style="margin-left:6px;">Sample</span>' : '';
@@ -1520,11 +1659,11 @@
           <div class="confluence-card-top">
             <div>
               <div class="confluence-sector-title">${s.name}${sampleTag}</div>
-              <div class="card-count" style="margin-top:2px;">${qualStocks.length} confluent stocks &nbsp;·&nbsp; ${indicesBadge}</div>
+              <div class="card-count" style="margin-top:2px;">${subDesc} &nbsp;·&nbsp; ${indicesBadge}</div>
             </div>
             <div class="confluence-dual-changes">
-              <span class="confluence-pill-tag day" title="${baseP} Trend">${baseP} +${s.changeBase.toFixed(2)}%</span>
-              <span class="confluence-pill-tag compare" title="${compP} Trend">${compP} +${s.changeCompare.toFixed(2)}%</span>
+              <span class="confluence-pill-tag day" title="${baseP} Trend">${baseP} ${s.changeBase >= 0 ? '+' : ''}${s.changeBase.toFixed(2)}%</span>
+              <span class="confluence-pill-tag compare" title="${compP} Trend">${compP} ${s.changeCompare >= 0 ? '+' : ''}${s.changeCompare.toFixed(2)}%</span>
             </div>
           </div>
           <div class="heatbar" style="margin-top:8px;">
@@ -1602,7 +1741,16 @@
     const cloned = JSON.parse(JSON.stringify(base));
     if (cloned.data && cloned.data.chartData){
       cloned.data.chartData.forEach(item => {
-        const custom = customMap[item.name] || customMap[item.fullName];
+        const itemNorm = normalizeSectorName(item.name || item.fullName || '');
+        let custom = customMap[item.name] || customMap[item.fullName];
+        if (custom === undefined) {
+          for (const [k, v] of Object.entries(customMap)) {
+            if (normalizeSectorName(k) === itemNorm || normStockKey(k) === normStockKey(item.name || item.fullName || '')) {
+              custom = v;
+              break;
+            }
+          }
+        }
         if (custom !== undefined){
           item.changeP = custom;
           item.value = Math.abs(custom);
@@ -1625,21 +1773,27 @@
       "Metals & Mining": 4.85, "JSW Steel": 6.80, "Hindalco": 5.90, "Tata Steel": 4.10, "Coal India": 2.10,
       "Agri": 3.40, "TATA Cons. Prod": 3.80,
       "Software & IT Services": 2.65, "HCL Tech": 3.90, "Infosys": 2.80, "TCS": 2.10,
-      "Healthcare": 1.95, "Dr Reddys Labs": 3.50, "Sun Pharma": 2.10, "Cipla": 1.60
+      "Healthcare": 1.95, "Dr Reddys Labs": 3.50, "Sun Pharma": 2.10, "Cipla": 1.60,
+      "Diamond & Jewellery": 8.40, "Titan Company": 8.40,
+      "Trading": 2.15, "Adani Enterpris": 2.15, "Adani Enterprises": 2.15
     };
 
     const custom1M = {
       "Metals & Mining": 8.90, "JSW Steel": 11.80, "Hindalco": 9.60, "Tata Steel": 7.40, "Coal India": 4.30,
       "Agri": 5.80, "TATA Cons. Prod": 6.90,
       "Software & IT Services": 4.80, "HCL Tech": 7.20, "Infosys": 5.40, "TCS": 3.80,
-      "Healthcare": 3.60, "Dr Reddys Labs": 5.80, "Sun Pharma": 4.10, "Cipla": 2.90
+      "Healthcare": 3.60, "Dr Reddys Labs": 5.80, "Sun Pharma": 4.10, "Cipla": 2.90,
+      "Diamond & Jewellery": 15.20, "Titan Company": 15.20,
+      "Trading": 3.90, "Adani Enterpris": 3.90, "Adani Enterprises": 3.90
     };
 
     const custom3M = {
       "Metals & Mining": 14.50, "JSW Steel": 18.20, "Hindalco": 15.60, "Tata Steel": 12.10, "Coal India": 7.50,
       "Agri": 9.40, "TATA Cons. Prod": 11.20,
       "Software & IT Services": 8.20, "HCL Tech": 12.40, "Infosys": 9.10, "TCS": 6.50,
-      "Healthcare": 6.80, "Dr Reddys Labs": 9.50, "Sun Pharma": 7.20, "Cipla": 5.10
+      "Healthcare": 6.80, "Dr Reddys Labs": 9.50, "Sun Pharma": 7.20, "Cipla": 5.10,
+      "Diamond & Jewellery": 23.72, "Titan Company": 23.72,
+      "Trading": 5.68, "Adani Enterpris": 5.68, "Adani Enterprises": 5.68
     };
 
     if (period === '5D') return makeDerivedSampleData(SAMPLE_DATA, 1.8, custom5D);
