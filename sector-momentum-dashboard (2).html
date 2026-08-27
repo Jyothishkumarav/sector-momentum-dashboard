@@ -1,0 +1,1183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sector Momentum — Threshold Scanner</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0B0F1A;
+    --surface:#121a2b;
+    --surface-2:#182238;
+    --border:#232c42;
+    --text:#e8ecf4;
+    --text-muted:#8792a8;
+    --text-dim:#5b6680;
+    --gain:#35d08a;
+    --gain-dim:#1b3a2d;
+    --loss:#ff6b6b;
+    --loss-dim:#3a2020;
+    --amber:#f0b94d;
+    --radius:10px;
+  }
+
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:
+      radial-gradient(1200px 600px at 85% -10%, rgba(53,208,138,0.06), transparent 60%),
+      radial-gradient(900px 500px at 10% 0%, rgba(240,185,77,0.05), transparent 55%),
+      var(--bg);
+    color:var(--text);
+    font-family:'Inter',system-ui,sans-serif;
+    min-height:100vh;
+    padding-bottom:60px;
+  }
+
+  a{color:inherit;}
+
+  ::selection{background:var(--amber);color:#181206;}
+
+  :focus-visible{
+    outline:2px solid var(--amber);
+    outline-offset:2px;
+  }
+
+  /* ---------- Header ---------- */
+  header{
+    padding:32px 28px 20px;
+    max-width:1240px;
+    margin:0 auto;
+  }
+  .eyebrow{
+    font-family:'JetBrains Mono',monospace;
+    font-size:12px;
+    letter-spacing:0.14em;
+    text-transform:uppercase;
+    color:var(--amber);
+    margin:0 0 8px;
+  }
+  h1{
+    font-family:'Space Grotesk',sans-serif;
+    font-size:clamp(26px,4vw,38px);
+    font-weight:700;
+    margin:0 0 6px;
+    letter-spacing:-0.01em;
+  }
+  .subhead{
+    color:var(--text-muted);
+    font-size:14.5px;
+    margin:0;
+    max-width:640px;
+    line-height:1.5;
+  }
+
+  /* ---------- Ticker ---------- */
+  .ticker-wrap{
+    border-top:1px solid var(--border);
+    border-bottom:1px solid var(--border);
+    background:var(--surface);
+    overflow:hidden;
+    margin-top:24px;
+    position:relative;
+  }
+  .ticker-wrap::before, .ticker-wrap::after{
+    content:'';
+    position:absolute; top:0; bottom:0; width:60px; z-index:2; pointer-events:none;
+  }
+  .ticker-wrap::before{ left:0; background:linear-gradient(90deg, var(--surface), transparent); }
+  .ticker-wrap::after{ right:0; background:linear-gradient(270deg, var(--surface), transparent); }
+  .ticker-track{
+    display:flex;
+    width:max-content;
+    animation: scroll-left 100s linear infinite;
+  }
+  .ticker-item{
+    font-family:'JetBrains Mono',monospace;
+    font-size:13px;
+    padding:10px 22px;
+    white-space:nowrap;
+    color:var(--text-muted);
+    border-right:1px solid var(--border);
+  }
+  .ticker-item b{ color:var(--text); font-weight:600; margin-right:8px; }
+  .ticker-item.up{ color:var(--gain); }
+  .ticker-item.down{ color:var(--loss); }
+  @keyframes scroll-left{
+    from{ transform:translateX(0); }
+    to{ transform:translateX(-50%); }
+  }
+  @media (prefers-reduced-motion: reduce){
+    .ticker-track{ animation:none; overflow-x:auto; }
+  }
+
+  /* ---------- Controls ---------- */
+  .controls{
+    max-width:1240px;
+    margin:24px auto 0;
+    padding:0 28px;
+    display:flex;
+    flex-wrap:wrap;
+    gap:16px 14px;
+    align-items:flex-start;
+  }
+  .field{
+    display:flex;
+    flex-direction:column;
+    gap:6px;
+    min-width:110px;
+  }
+  .field.wide{ min-width:190px; }
+  .field label{
+    display:block;
+    height:14px;
+    line-height:14px;
+    font-size:11.5px;
+    text-transform:uppercase;
+    letter-spacing:0.08em;
+    color:var(--text-dim);
+    font-weight:600;
+    white-space:nowrap;
+  }
+  .field input, .field select{
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:8px;
+    color:var(--text);
+    font-family:'JetBrains Mono',monospace;
+    font-size:14px;
+    padding:0 12px;
+    height:38px;
+    width:100%;
+  }
+  .field select{ cursor:pointer; }
+  .field .hint{
+    display:block;
+    height:13px;
+    line-height:13px;
+    font-size:11px;
+    color:var(--text-dim);
+    white-space:nowrap;
+    overflow:hidden;
+  }
+  .field.btn-field{ min-width:0; }
+  .field.btn-field label{ visibility:hidden; }
+  .field.btn-field .hint{ visibility:hidden; }
+  .btn-row{ display:flex; gap:10px; flex-wrap:wrap; height:38px; }
+  button{
+    font-family:'Inter',sans-serif;
+    font-weight:600;
+    font-size:13.5px;
+    border-radius:8px;
+    padding:0 16px;
+    height:38px;
+    cursor:pointer;
+    border:1px solid var(--border);
+    background:var(--surface);
+    color:var(--text);
+    transition:border-color .15s ease, transform .1s ease;
+  }
+  button:hover{ border-color:var(--text-dim); }
+  button:active{ transform:translateY(1px); }
+  button.primary{
+    background:linear-gradient(180deg, #3de19a, var(--gain));
+    color:#0a1f15;
+    border:none;
+  }
+  button.ghost{ background:transparent; }
+
+  /* ---------- Status banner ---------- */
+  .banner{
+    max-width:1240px;
+    margin:18px auto 0;
+    padding:0 28px;
+  }
+  .banner-inner{
+    border:1px solid var(--border);
+    background:var(--surface);
+    border-radius:var(--radius);
+    padding:14px 18px;
+    font-size:13.5px;
+    line-height:1.6;
+    color:var(--text-muted);
+  }
+  .banner-inner.warn{ border-color:#4a3a1f; background:#1c1408; color:#e8c98a; }
+  .banner-inner code{
+    font-family:'JetBrains Mono',monospace;
+    background:rgba(255,255,255,0.06);
+    padding:1px 6px;
+    border-radius:4px;
+    font-size:12px;
+  }
+
+  /* ---------- Manual data panel ---------- */
+  .manual-panel{
+    max-width:1240px;
+    margin:14px auto 0;
+    padding:0 28px;
+    display:none;
+  }
+  .manual-panel.open{ display:block; }
+  .manual-panel textarea{
+    width:100%;
+    min-height:140px;
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:var(--radius);
+    color:var(--text);
+    font-family:'JetBrains Mono',monospace;
+    font-size:12.5px;
+    padding:12px;
+    resize:vertical;
+  }
+  .manual-panel .row{ display:flex; gap:10px; margin-top:10px; }
+
+  /* ---------- Summary stats ---------- */
+  .stats{
+    max-width:1240px;
+    margin:22px auto 0;
+    padding:0 28px;
+    display:flex;
+    gap:28px;
+    flex-wrap:wrap;
+  }
+  .stat b{
+    display:block;
+    font-family:'JetBrains Mono',monospace;
+    font-size:24px;
+    font-weight:700;
+  }
+  .stat span{
+    font-size:11.5px;
+    color:var(--text-dim);
+    text-transform:uppercase;
+    letter-spacing:0.08em;
+  }
+  .stat.asof{ margin-left:auto; text-align:right; }
+  .stat.asof b{ font-size:14px; color:var(--text-muted); font-weight:500; }
+
+  /* ---------- Grid ---------- */
+  main{
+    max-width:1240px;
+    margin:20px auto 0;
+    padding:0 28px;
+  }
+  .grid{
+    display:grid;
+    grid-template-columns:repeat(auto-fill,minmax(320px,1fr));
+    gap:16px;
+  }
+  .card{
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:var(--radius);
+    padding:18px 18px 0;
+    position:relative;
+    overflow:hidden;
+  }
+  .card-top{
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-start;
+    gap:10px;
+  }
+  .card-name{
+    font-family:'Space Grotesk',sans-serif;
+    font-weight:600;
+    font-size:17px;
+  }
+  .card-count{
+    font-size:11.5px;
+    color:var(--text-dim);
+    font-family:'JetBrains Mono',monospace;
+    margin-top:4px;
+  }
+  .card-change{
+    font-family:'JetBrains Mono',monospace;
+    font-size:22px;
+    font-weight:700;
+    white-space:nowrap;
+  }
+  .card-change.up{ color:var(--gain); }
+  .card-change.down{ color:var(--loss); }
+
+  .heatbar{
+    height:4px;
+    width:100%;
+    background:var(--surface-2);
+    margin-top:14px;
+    border-radius:2px;
+    overflow:hidden;
+  }
+  .heatbar-fill{ height:100%; }
+  .heatbar-fill.up{ background:var(--gain); }
+  .heatbar-fill.down{ background:var(--loss); }
+
+  .stock-list{
+    margin-top:10px;
+    padding-bottom:8px;
+  }
+  .stock-row{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:10px;
+    padding:9px 0;
+    border-top:1px solid var(--border);
+    text-decoration:none;
+  }
+  .stock-row:hover .stock-name{ color:var(--amber); }
+  .stock-left{ min-width:0; }
+  .stock-name{
+    font-size:13.5px;
+    font-weight:500;
+    color:var(--text);
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    display:block;
+    max-width:170px;
+    transition:color .12s ease;
+  }
+  .stock-ltp{
+    font-family:'JetBrains Mono',monospace;
+    font-size:11.5px;
+    color:var(--text-dim);
+  }
+  .stock-change{
+    font-family:'JetBrains Mono',monospace;
+    font-size:13.5px;
+    font-weight:600;
+    white-space:nowrap;
+  }
+  .stock-change.up{ color:var(--gain); }
+  .stock-change.down{ color:var(--loss); }
+
+  .no-stocks{
+    padding:12px 0 16px;
+    font-size:12.5px;
+    color:var(--text-dim);
+    border-top:1px solid var(--border);
+    margin-top:10px;
+  }
+
+  .empty{
+    grid-column:1/-1;
+    text-align:center;
+    padding:70px 20px;
+    color:var(--text-muted);
+  }
+  .empty b{
+    display:block;
+    font-family:'Space Grotesk',sans-serif;
+    font-size:20px;
+    color:var(--text);
+    margin-bottom:8px;
+  }
+
+  /* ---------- Multi-index overview ---------- */
+  .multi-section-header{
+    max-width:1240px;
+    margin:56px auto 0;
+    padding:28px 28px 0;
+    border-top:1px solid var(--border);
+  }
+  .multi-section-header h2{
+    font-family:'Space Grotesk',sans-serif;
+    font-size:clamp(21px,3vw,27px);
+    font-weight:700;
+    margin:0 0 6px;
+    letter-spacing:-0.01em;
+  }
+  #multiIndexList{
+    max-width:1240px;
+    margin:26px auto 0;
+    padding:0 28px 8px;
+    display:flex;
+    flex-direction:column;
+    gap:36px;
+  }
+  .index-block-header{
+    display:flex;
+    justify-content:space-between;
+    align-items:baseline;
+    flex-wrap:wrap;
+    gap:6px 16px;
+    margin-bottom:14px;
+    padding-bottom:12px;
+    border-bottom:1px solid var(--border);
+  }
+  .index-block-name{
+    font-family:'Space Grotesk',sans-serif;
+    font-size:18px;
+    font-weight:600;
+  }
+  .index-block-name .sample-flag{
+    font-family:'JetBrains Mono',monospace;
+    font-size:10.5px;
+    font-weight:500;
+    color:var(--amber);
+    text-transform:uppercase;
+    letter-spacing:0.06em;
+    margin-left:9px;
+    vertical-align:middle;
+  }
+  .index-block-meta{
+    font-family:'JetBrains Mono',monospace;
+    font-size:12px;
+    color:var(--text-dim);
+  }
+
+  /* ---------- Multi-index summary (compact) ---------- */
+  .summary-section-header{
+    max-width:1240px;
+    margin:60px auto 0;
+    padding:28px 28px 0;
+    border-top:1px solid var(--border);
+  }
+  .summary-section-header h2{
+    font-family:'Space Grotesk',sans-serif;
+    font-size:clamp(21px,3vw,27px);
+    font-weight:700;
+    margin:0 0 6px;
+    letter-spacing:-0.01em;
+  }
+  #multiIndexSummaryList{
+    max-width:1240px;
+    margin:24px auto 0;
+    padding:0 28px 8px;
+    display:flex;
+    flex-direction:column;
+    gap:12px;
+  }
+  .summary-index-row{
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:var(--radius);
+    overflow:hidden;
+    transition:border-color .15s ease;
+  }
+  .summary-index-row:hover{ border-color:var(--text-dim); }
+  .summary-index-top{
+    display:flex;
+    align-items:center;
+    gap:16px;
+    padding:14px 18px 12px;
+    flex-wrap:wrap;
+  }
+  .summary-index-name{
+    font-family:'Space Grotesk',sans-serif;
+    font-size:15px;
+    font-weight:600;
+    min-width:120px;
+  }
+  .summary-index-meta{
+    font-family:'JetBrains Mono',monospace;
+    font-size:11.5px;
+    color:var(--text-dim);
+    flex:1;
+  }
+  .summary-index-asof{
+    font-family:'JetBrains Mono',monospace;
+    font-size:11px;
+    color:var(--text-dim);
+    margin-left:auto;
+  }
+  .summary-sector-strip{
+    display:flex;
+    flex-wrap:wrap;
+    gap:6px;
+    padding:0 18px 14px;
+  }
+  .summary-sector-pill{
+    display:inline-flex;
+    align-items:center;
+    gap:5px;
+    font-family:'JetBrains Mono',monospace;
+    font-size:11.5px;
+    font-weight:500;
+    padding:3px 9px;
+    border-radius:20px;
+    white-space:nowrap;
+  }
+  .summary-sector-pill.up{
+    background:var(--gain-dim);
+    color:var(--gain);
+    border:1px solid rgba(53,208,138,0.2);
+  }
+  .summary-sector-pill.down{
+    background:var(--loss-dim);
+    color:var(--loss);
+    border:1px solid rgba(255,107,107,0.2);
+  }
+  .summary-sector-pill.flat{
+    background:var(--surface-2);
+    color:var(--text-dim);
+    border:1px solid var(--border);
+  }
+  .summary-divider{
+    height:3px;
+    display:flex;
+    overflow:hidden;
+    border-radius:0;
+  }
+  .summary-divider-seg{ flex:1; height:100%; }
+  .summary-divider-seg.up{ background:var(--gain); }
+  .summary-divider-seg.down{ background:var(--loss); }
+  .summary-divider-seg.flat{ background:var(--surface-2); }
+  .summary-empty{
+    padding:12px 18px;
+    font-size:12.5px;
+    color:var(--text-dim);
+  }
+
+  footer{
+    max-width:1240px;
+    margin:40px auto 0;
+    padding:16px 28px 0;
+    border-top:1px solid var(--border);
+    color:var(--text-dim);
+    font-size:12px;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <p class="eyebrow">Live heat-map scanner</p>
+  <h1>Sector Momentum</h1>
+  <p class="subhead">Scans an index's sector heat-map and surfaces sectors moving past your threshold — and the individual stocks driving each move.</p>
+</header>
+
+<div class="ticker-wrap">
+  <div class="ticker-track" id="tickerTrack"></div>
+</div>
+
+<div class="controls">
+  <div class="field">
+    <label for="indexId">Index</label>
+    <select id="indexId">
+      <option value="49" selected>Nifty 200</option>
+      <option value="28">Nifty 100</option>
+      <option value="9">Nifty 50</option>
+      <option value="113">Smallcap 50</option>
+      <option value="27">Midcap 100</option>
+      <option value="custom">Custom…</option>
+    </select>
+    <span class="hint" id="indexHint">indexId 49</span>
+  </div>
+  <div class="field" id="customIndexField" style="display:none;">
+    <label for="customIndexId">Custom index ID</label>
+    <input type="number" id="customIndexId" placeholder="e.g. 17">
+    <span class="hint">&nbsp;</span>
+  </div>
+  <div class="field wide">
+    <label for="proxyUrl">Proxy base URL</label>
+    <input type="text" id="proxyUrl" placeholder="http://localhost:3001">
+    <span class="hint">blank = direct call (CORS-blocked)</span>
+  </div>
+  <div class="field">
+    <label for="periodId">Period</label>
+    <select id="periodId">
+      <option value="1D" selected>1D — Today</option>
+      <option value="5D">5D — 5 Days</option>
+      <option value="1M">1M — 1 Month</option>
+    </select>
+    <span class="hint">applies to all sections</span>
+  </div>
+  <div class="field">
+    <label for="sectorThresh">Sector threshold %</label>
+    <input type="number" id="sectorThresh" value="1.5" step="0.1" min="0">
+    <span class="hint">abs(change) ≥ this</span>
+  </div>
+  <div class="field">
+    <label for="stockThresh">Stock threshold %</label>
+    <input type="number" id="stockThresh" value="2" step="0.1" min="0">
+    <span class="hint">abs(change) ≥ this</span>
+  </div>
+  <div class="field btn-field">
+    <label>Actions</label>
+    <div class="btn-row">
+      <button class="ghost" id="btnPaste" type="button">Paste JSON</button>
+      <button class="ghost" id="btnSample" type="button">Load sample data</button>
+      <button class="primary" id="btnFetch" type="button">Fetch live</button>
+    </div>
+    <span class="hint">&nbsp;</span>
+  </div>
+</div>
+
+<div class="banner" id="bannerWrap" style="display:none;">
+  <div class="banner-inner" id="bannerInner"></div>
+</div>
+
+<div class="manual-panel" id="manualPanel">
+  <textarea id="manualInput" placeholder="Paste the raw JSON response from the heat-map API here, then click Apply."></textarea>
+  <div class="row">
+    <button class="primary" id="btnApplyManual" type="button">Apply</button>
+    <button class="ghost" id="btnCancelManual" type="button">Cancel</button>
+  </div>
+</div>
+
+<div class="stats" id="statsRow" style="display:none;"></div>
+
+<main>
+  <div class="grid" id="grid"></div>
+</main>
+
+<section class="multi-section-header">
+  <p class="eyebrow">Overall view</p>
+  <h2>Multi-Index Overview</h2>
+  <p class="subhead">The same scan run across five cap segments at once — Nifty 50, Nifty 100, Nifty 200, Midcap 100 and Smallcap 50 — so you can see whether today's move is broad or concentrated in one segment.</p>
+</section>
+
+<div class="controls">
+  <div class="field">
+    <label for="multiSectorThresh">Sector threshold %</label>
+    <input type="number" id="multiSectorThresh" value="1" step="0.1" min="0">
+    <span class="hint">abs(change) ≥ this</span>
+  </div>
+  <div class="field">
+    <label for="multiStockThresh">Stock threshold %</label>
+    <input type="number" id="multiStockThresh" value="1" step="0.1" min="0">
+    <span class="hint">abs(change) ≥ this</span>
+  </div>
+  <div class="field btn-field">
+    <label>Actions</label>
+    <div class="btn-row">
+      <button class="ghost" id="btnMultiSample" type="button">Preview with sample data</button>
+      <button class="primary" id="btnMultiFetch" type="button">Fetch all 5 live</button>
+    </div>
+    <span class="hint">&nbsp;</span>
+  </div>
+</div>
+
+<div class="banner" id="multiBannerWrap" style="display:none;">
+  <div class="banner-inner" id="multiBannerInner"></div>
+</div>
+
+<div id="multiIndexList"></div>
+
+<!-- ===== Multi-Index Summary Section ===== -->
+<section class="summary-section-header">
+  <p class="eyebrow">Overall view</p>
+  <h2>Multi-Index Summary</h2>
+  <p class="subhead">A compact, at-a-glance summary of sectors moving past your threshold across all five cap segments — Nifty 50, Nifty 100, Nifty 200, Midcap 100 and Smallcap 50.</p>
+</section>
+
+<div class="controls" id="summaryControls">
+  <div class="field">
+    <label for="summaryThresh">Threshold %</label>
+    <input type="number" id="summaryThresh" value="1" step="0.1" min="0">
+    <span class="hint">abs(change) ≥ this</span>
+  </div>
+  <div class="field btn-field">
+    <label>Actions</label>
+    <div class="btn-row">
+      <button class="ghost" id="btnSummaryRefresh" type="button">Refresh summary</button>
+    </div>
+    <span class="hint">&nbsp;</span>
+  </div>
+</div>
+
+<div id="multiIndexSummaryList"></div>
+
+<footer>
+  Data via MoneyControl's public heat-map endpoint. Numbers reflect the last fetch or pasted snapshot, not a live stream.
+</footer>
+
+<script>
+(function(){
+  const els = {
+    indexId: document.getElementById('indexId'),
+    indexHint: document.getElementById('indexHint'),
+    customIndexField: document.getElementById('customIndexField'),
+    customIndexId: document.getElementById('customIndexId'),
+    sectorThresh: document.getElementById('sectorThresh'),
+    stockThresh: document.getElementById('stockThresh'),
+    proxyUrl: document.getElementById('proxyUrl'),
+    btnFetch: document.getElementById('btnFetch'),
+    btnPaste: document.getElementById('btnPaste'),
+    btnSample: document.getElementById('btnSample'),
+    bannerWrap: document.getElementById('bannerWrap'),
+    bannerInner: document.getElementById('bannerInner'),
+    manualPanel: document.getElementById('manualPanel'),
+    manualInput: document.getElementById('manualInput'),
+    btnApplyManual: document.getElementById('btnApplyManual'),
+    btnCancelManual: document.getElementById('btnCancelManual'),
+    statsRow: document.getElementById('statsRow'),
+    grid: document.getElementById('grid'),
+    tickerTrack: document.getElementById('tickerTrack'),
+    multiSectorThresh: document.getElementById('multiSectorThresh'),
+    multiStockThresh: document.getElementById('multiStockThresh'),
+    btnMultiFetch: document.getElementById('btnMultiFetch'),
+    btnMultiSample: document.getElementById('btnMultiSample'),
+    multiBannerWrap: document.getElementById('multiBannerWrap'),
+    multiBannerInner: document.getElementById('multiBannerInner'),
+    multiIndexList: document.getElementById('multiIndexList'),
+    periodId: document.getElementById('periodId'),
+  };
+
+  let rawPayload = null; // parsed API JSON
+
+  const INDEX_NAMES = { '49':'Nifty 200', '28':'Nifty 100', '9':'Nifty 50', '113':'Smallcap 50', '27':'Midcap 100' };
+
+  function getIndexId(){
+    const sel = els.indexId.value;
+    if (sel === 'custom') return (els.customIndexId.value || '').trim() || '49';
+    return sel;
+  }
+
+  function updateIndexHint(){
+    const sel = els.indexId.value;
+    if (sel === 'custom') {
+      els.customIndexField.style.display = 'flex';
+      els.indexHint.textContent = 'enter any index ID';
+    } else {
+      els.customIndexField.style.display = 'none';
+      els.indexHint.textContent = `indexId ${sel}`;
+    }
+  }
+  els.indexId.addEventListener('change', updateIndexHint);
+  updateIndexHint();
+
+  function buildUrl(indexId){
+    const proxyBase = (els.proxyUrl.value || '').trim().replace(/\/+$/, '');
+    const period = (els.periodId && els.periodId.value) || '1D';
+    if (proxyBase) {
+      return `${proxyBase}/api/heat-map?period=${period}&type=MM&indexId=${indexId}&subType=SE`;
+    }
+    return `https://api.moneycontrol.com/mcapi/v1/indices/ad-ratio/heat-map?period=${period}&type=MM&indexId=${indexId}&subType=SE`;
+  }
+
+  function showBanner(html, warn){
+    els.bannerWrap.style.display = 'block';
+    els.bannerInner.innerHTML = html;
+    els.bannerInner.className = 'banner-inner' + (warn ? ' warn' : '');
+  }
+  function hideBanner(){ els.bannerWrap.style.display = 'none'; }
+
+  function openManual(prefill){
+    els.manualPanel.classList.add('open');
+    if (prefill) els.manualInput.value = prefill;
+  }
+  function closeManual(){ els.manualPanel.classList.remove('open'); }
+
+  async function fetchLive(){
+    const indexId = getIndexId();
+    const url = buildUrl(indexId);
+    showBanner(`Requesting <code>${url}</code> …`);
+    try {
+      const res = await fetch(url, { headers: { 'accept': 'application/json, text/plain, */*' } });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const json = await res.json();
+      rawPayload = json;
+      hideBanner();
+      closeManual();
+      render();
+      showBanner(`Live data loaded${(els.proxyUrl.value||'').trim() ? ' via proxy' : ''}. As on: ${(json.data && json.data.asOnDate || '').trim()}`);
+      setTimeout(hideBanner, 4000);
+    } catch (err) {
+      const usingProxy = !!(els.proxyUrl.value || '').trim();
+      showBanner(
+        usingProxy
+        ? `Couldn't reach the proxy at <code>${(els.proxyUrl.value||'').trim()}</code>. Is <code>node server.js</code> running in the ` +
+          `<code>heatmap-proxy</code> folder, and is the port right? <span style="opacity:.7">(${err.message})</span>`
+        : `Live fetch was blocked — almost certainly by <b>CORS</b>, not anything wrong with the request. MoneyControl's API doesn't ` +
+          `send back permission for cross-site browser calls, so the browser refuses the response before this page ever sees it. ` +
+          `Fix: run the included <code>heatmap-proxy</code> (server-to-server calls aren't subject to CORS), then set ` +
+          `<b>Proxy base URL</b> above to <code>http://localhost:3001</code> and fetch again. Or paste a JSON response you've ` +
+          `fetched elsewhere, or explore the layout with sample data. <span style="opacity:.7">(${err.message})</span>`,
+        true
+      );
+      openManual();
+    }
+  }
+
+  els.btnFetch.addEventListener('click', fetchLive);
+  els.btnPaste.addEventListener('click', () => { hideBanner(); openManual(); });
+  els.btnCancelManual.addEventListener('click', closeManual);
+
+  els.btnApplyManual.addEventListener('click', () => {
+    try {
+      const json = JSON.parse(els.manualInput.value);
+      rawPayload = json;
+      hideBanner();
+      closeManual();
+      render();
+    } catch (e) {
+      showBanner('Could not parse that as JSON — check for a stray trailing comma or truncated paste. <span style="opacity:.7">(' + e.message + ')</span>', true);
+    }
+  });
+
+  els.btnSample.addEventListener('click', () => {
+    rawPayload = SAMPLE_DATA;
+    hideBanner();
+    closeManual();
+    render();
+  });
+
+  [els.sectorThresh, els.stockThresh].forEach(inp => inp.addEventListener('input', () => { if (rawPayload) render(); }));
+
+  function fmtPct(n){
+    const s = (n >= 0 ? '+' : '') + n.toFixed(2) + '%';
+    return s;
+  }
+  function fmtNum(n){ return Number(n).toLocaleString('en-IN', {maximumFractionDigits:2}); }
+
+  function process(payload){
+    const list = (payload && payload.data && payload.data.chartData) || [];
+    const sectors = list.filter(x => x.totalStocks !== undefined && x.parent === undefined);
+    const stocks = list.filter(x => x.parent !== undefined);
+    const bySector = {};
+    stocks.forEach(s => {
+      if (!bySector[s.parent]) bySector[s.parent] = [];
+      bySector[s.parent].push(s);
+    });
+    return {
+      sectors,
+      bySector,
+      asOnDate: payload && payload.data && payload.data.asOnDate
+    };
+  }
+
+  function renderTicker(sectors){
+    const items = sectors.slice().sort((a,b) => a.name.localeCompare(b.name));
+    const makeRow = () => items.map(s => {
+      const dir = s.changeP > 0 ? 'up' : (s.changeP < 0 ? 'down' : '');
+      return `<div class="ticker-item ${dir}"><b>${s.name}</b>${fmtPct(s.changeP)}</div>`;
+    }).join('');
+    els.tickerTrack.innerHTML = makeRow() + makeRow();
+
+    // Set a slow, constant, readable pace regardless of how many sectors are in this index —
+    // duration scales with content width instead of being a fixed number of seconds.
+    requestAnimationFrame(() => {
+      const halfWidth = els.tickerTrack.scrollWidth / 2;
+      const pxPerSecond = 22; // slow enough to actually read each entry
+      const duration = Math.max(30, Math.round(halfWidth / pxPerSecond));
+      els.tickerTrack.style.animationDuration = duration + 's';
+    });
+  }
+
+  // Builds the sector-card grid HTML for one dataset + threshold pair.
+  // Shared by the single-index view and each block in the multi-index overview,
+  // so both render "in the same way".
+  function buildSectorGridHTML(sectors, bySector, sectorThresh, stockThresh, positiveOnly){
+    const qualifying = sectors
+      .filter(s => positiveOnly ? s.changeP >= sectorThresh : Math.abs(s.changeP) >= sectorThresh)
+      .sort((a,b) => Math.abs(b.changeP) - Math.abs(a.changeP));
+
+    if (!qualifying.length){
+      return {
+        html: `
+          <div class="empty">
+            <b>Nothing crossed ${sectorThresh}% today</b>
+            Lower the sector threshold, or check back closer to close — moves tend to widen through the session.
+          </div>`,
+        qualifyingCount: 0,
+        qualStockCount: 0
+      };
+    }
+
+    const maxAbs = Math.max(1, ...qualifying.map(s => Math.abs(s.changeP)));
+    let qualStockCount = 0;
+
+    const html = qualifying.map(s => {
+      const dir = s.changeP > 0 ? 'up' : 'down';
+      const stocksIn = (bySector[s.id] || []).slice().sort((a,b) => positiveOnly ? b.changeP - a.changeP : Math.abs(b.changeP) - Math.abs(a.changeP));
+      const qualStocks = stocksIn.filter(x => positiveOnly ? x.changeP >= stockThresh : Math.abs(x.changeP) >= stockThresh);
+      qualStockCount += qualStocks.length;
+      const width = Math.min(100, (Math.abs(s.changeP) / maxAbs) * 100);
+
+      const stockRows = qualStocks.length
+        ? qualStocks.map(st => {
+            const sdir = st.changeP > 0 ? 'up' : 'down';
+            return `
+              <a class="stock-row" href="${st.url || '#'}" target="_blank" rel="noopener">
+                <div class="stock-left">
+                  <span class="stock-name">${st.fullName || st.name}</span>
+                  <span class="stock-ltp">₹${fmtNum(st.ltp)}</span>
+                </div>
+                <span class="stock-change ${sdir}">${fmtPct(st.changeP)}</span>
+              </a>`;
+          }).join('')
+        : `<div class="no-stocks">No individual stock in this sector cleared ${stockThresh}% today — the sector move is broad rather than led by one name.</div>`;
+
+      return `
+        <div class="card">
+          <div class="card-top">
+            <div>
+              <div class="card-name">${s.name}</div>
+              <div class="card-count">${qualStocks.length}/${s.totalStocks} stocks past threshold</div>
+            </div>
+            <div class="card-change ${dir}">${fmtPct(s.changeP)}</div>
+          </div>
+          <div class="heatbar"><div class="heatbar-fill ${dir}" style="width:${width}%"></div></div>
+          <div class="stock-list">${stockRows}</div>
+        </div>`;
+    }).join('');
+
+    return { html, qualifyingCount: qualifying.length, qualStockCount };
+  }
+
+  function render(){
+    if (!rawPayload) return;
+    const { sectors, bySector, asOnDate } = process(rawPayload);
+    const sectorThresh = parseFloat(els.sectorThresh.value) || 0;
+    const stockThresh = parseFloat(els.stockThresh.value) || 0;
+
+    renderTicker(sectors);
+
+    const { html, qualifyingCount, qualStockCount } = buildSectorGridHTML(sectors, bySector, sectorThresh, stockThresh, true);
+
+    els.statsRow.style.display = 'flex';
+    els.statsRow.innerHTML = `
+      <div class="stat"><b>${sectors.length}</b><span>Sectors scanned</span></div>
+      <div class="stat"><b>${qualifyingCount}</b><span>Past ${sectorThresh}% threshold</span></div>
+      <div class="stat"><b>${qualStockCount}</b><span>Stocks past ${stockThresh}%</span></div>
+      <div class="stat asof"><b>${asOnDate ? asOnDate.trim() : '—'}</b><span>As on</span></div>
+    `;
+
+    els.grid.innerHTML = html;
+  }
+
+  // ---------- Multi-index overview ----------
+  // Same scan, run across all five cap segments so a move can be judged as broad or narrow.
+  const MULTI_INDEX_ORDER = ['9', '28', '49', '27', '113']; // Nifty 50, 100, 200, Midcap 100, Smallcap 50
+  let multiPayloads = {};       // indexId -> raw API payload
+  let multiIsSample = false;
+
+  function showMultiBanner(html, warn){
+    els.multiBannerWrap.style.display = 'block';
+    els.multiBannerInner.innerHTML = html;
+    els.multiBannerInner.className = 'banner-inner' + (warn ? ' warn' : '');
+  }
+  function hideMultiBanner(){ els.multiBannerWrap.style.display = 'none'; }
+
+  function renderMulti(){
+    const ids = MULTI_INDEX_ORDER.filter(id => multiPayloads[id]);
+    if (!ids.length){
+      els.multiIndexList.innerHTML = '';
+      return;
+    }
+    const sectorThresh = parseFloat(els.multiSectorThresh.value) || 0;
+    const stockThresh = parseFloat(els.multiStockThresh.value) || 0;
+
+    els.multiIndexList.innerHTML = ids.map(id => {
+      const { sectors, bySector, asOnDate } = process(multiPayloads[id]);
+      const { html, qualifyingCount, qualStockCount } = buildSectorGridHTML(sectors, bySector, sectorThresh, stockThresh, true);
+      const sampleTag = multiIsSample ? '<span class="sample-flag">Sample data</span>' : '';
+      return `
+        <div class="index-block">
+          <div class="index-block-header">
+            <div>
+              <span class="index-block-name">${INDEX_NAMES[id] || ('Index ' + id)}${sampleTag}</span>
+            </div>
+            <div class="index-block-meta">${qualifyingCount} sector${qualifyingCount===1?'':'s'} · ${qualStockCount} stock${qualStockCount===1?'':'s'} past threshold · as on ${asOnDate ? asOnDate.trim() : '—'}</div>
+          </div>
+          <div class="grid">${html}</div>
+        </div>`;
+    }).join('');
+  }
+
+  async function fetchMultiLive(){
+    showMultiBanner('Fetching Nifty 50, Nifty 100, Nifty 200, Midcap 100 and Smallcap 50 …');
+    const results = {};
+    let lastError = null;
+    for (const id of MULTI_INDEX_ORDER){
+      try {
+        const res = await fetch(buildUrl(id), { headers: { 'accept': 'application/json, text/plain, */*' } });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        results[id] = await res.json();
+      } catch (err) {
+        lastError = err;
+      }
+      // Small stagger between requests rather than firing all five at once.
+      await new Promise(r => setTimeout(r, 150));
+    }
+
+    const gotCount = Object.keys(results).length;
+    if (!gotCount){
+      const usingProxy = !!(els.proxyUrl.value || '').trim();
+      showMultiBanner(
+        usingProxy
+        ? `Couldn't reach the proxy for any of the 5 indices. Is <code>node server.js</code> still running? <span style="opacity:.7">(${lastError && lastError.message})</span>`
+        : `All 5 requests were blocked by CORS, same as the single-index fetch above. Set <b>Proxy base URL</b> in the section above ` +
+          `(it's shared by both sections) to <code>http://localhost:3001</code>, run the included proxy, then try again. ` +
+          `<span style="opacity:.7">(${lastError && lastError.message})</span>`,
+        true
+      );
+      return;
+    }
+
+    multiPayloads = results;
+    multiIsSample = false;
+    renderMulti();
+
+    if (gotCount < MULTI_INDEX_ORDER.length){
+      showMultiBanner(`Loaded ${gotCount} of ${MULTI_INDEX_ORDER.length} indices — the rest failed. <span style="opacity:.7">(${lastError && lastError.message})</span>`, true);
+    } else {
+      hideMultiBanner();
+    }
+  }
+
+  els.btnMultiFetch.addEventListener('click', fetchMultiLive);
+  els.btnMultiSample.addEventListener('click', () => {
+    const results = {};
+    MULTI_INDEX_ORDER.forEach(id => { results[id] = SAMPLE_DATA; });
+    multiPayloads = results;
+    multiIsSample = true;
+    hideMultiBanner();
+    renderMulti();
+  });
+  [els.multiSectorThresh, els.multiStockThresh].forEach(inp =>
+    inp.addEventListener('input', () => { if (Object.keys(multiPayloads).length) renderMulti(); })
+  );
+
+  // ---------- Multi-index summary (compact overall view) ----------
+  const summaryList = document.getElementById('multiIndexSummaryList');
+  const summaryThreshInp = document.getElementById('summaryThresh');
+  const btnSummaryRefresh = document.getElementById('btnSummaryRefresh');
+
+  function renderSummary(){
+    const thresh = parseFloat(summaryThreshInp.value) || 0;
+    const ids = MULTI_INDEX_ORDER.filter(id => multiPayloads[id]);
+    if (!ids.length){
+      summaryList.innerHTML = '<p style="padding:0 28px;color:var(--text-dim);font-size:13px;">No data loaded yet — use the Multi-Index Overview above to fetch or load sample data, then click Refresh summary.</p>';
+      return;
+    }
+    summaryList.innerHTML = ids.map(id => {
+      const { sectors, bySector, asOnDate } = process(multiPayloads[id]);
+      const allSectors = sectors.slice().sort((a,b) => Math.abs(b.changeP) - Math.abs(a.changeP));
+      const qualifying = allSectors.filter(s => s.changeP >= thresh);
+      const upCount = qualifying.filter(s => s.changeP > 0).length;
+      const downCount = qualifying.filter(s => s.changeP < 0).length;
+      const sampleTag = multiIsSample ? '<span class="sample-flag">Sample data</span>' : '';
+
+      const pills = qualifying.length
+        ? qualifying.map(s => {
+            const dir = s.changeP > 0 ? 'up' : (s.changeP < 0 ? 'down' : 'flat');
+            const sign = s.changeP > 0 ? '+' : '';
+            return `<span class="summary-sector-pill ${dir}">${s.name}&nbsp;<b>${sign}${s.changeP.toFixed(2)}%</b></span>`;
+          }).join('')
+        : `<span class="summary-empty">No sector crossed ${thresh}% threshold</span>`;
+
+      // colour divider bar proportional to up/down sectors
+      const total = qualifying.length || 1;
+      const upPct = (upCount / total * 100).toFixed(1);
+      const downPct = (downCount / total * 100).toFixed(1);
+      const dividerSegs = qualifying.length
+        ? `<div class="summary-divider-seg up" style="flex:${upCount}"></div><div class="summary-divider-seg down" style="flex:${downCount}"></div>`
+        : '<div class="summary-divider-seg flat" style="flex:1"></div>';
+
+      return `
+        <div class="summary-index-row">
+          <div class="summary-divider">${dividerSegs}</div>
+          <div class="summary-index-top">
+            <div class="summary-index-name">${INDEX_NAMES[id] || ('Index ' + id)}${sampleTag ? '&nbsp;<span class="sample-flag">Sample</span>' : ''}</div>
+            <div class="summary-index-meta">${qualifying.length} sector${qualifying.length===1?'':'s'} past ${thresh}% &nbsp;·&nbsp; ▲ ${upCount} up &nbsp;·&nbsp; ▼ ${downCount} down</div>
+            <div class="summary-index-asof">${asOnDate ? asOnDate.trim() : '—'}</div>
+          </div>
+          <div class="summary-sector-strip">${pills}</div>
+        </div>`;
+    }).join('');
+  }
+
+  btnSummaryRefresh.addEventListener('click', renderSummary);
+  summaryThreshInp.addEventListener('input', renderSummary);
+
+  // Bundled sample snapshot (Nifty 50, indexId 9, 24 Aug 2026) so the layout can be explored without a live/pasted response.
+  const SAMPLE_DATA = {
+    "success": 1,
+    "data": {
+        "chartData": [
+            {"id":"1","name":"Metals & Mining","value":1.83,"totalStocks":4,"color":"#84F0AC","changeP":1.83},
+            {"id":"2","name":"Finance","value":1.4,"totalStocks":4,"color":"#FDC5CA","changeP":-1.4},
+            {"id":"3","name":"Agri","value":1.29,"totalStocks":1,"color":"#84F0AC","changeP":1.29},
+            {"id":"4","name":"Insurance","value":1.17,"totalStocks":2,"color":"#FDC5CA","changeP":-1.17},
+            {"id":"5","name":"Aviation","value":0.69,"totalStocks":2,"color":"#CBCBCB","changeP":-0.69},
+            {"id":"6","name":"Infrastructure","value":0.68,"totalStocks":2,"color":"#CBCBCB","changeP":-0.68},
+            {"id":"7","name":"Retailing","value":0.65,"totalStocks":1,"color":"#CBCBCB","changeP":-0.65},
+            {"id":"8","name":"Construction Materials","value":0.57,"totalStocks":1,"color":"#CBCBCB","changeP":-0.57},
+            {"id":"9","name":"Telecom","value":0.57,"totalStocks":1,"color":"#CBCBCB","changeP":-0.57},
+            {"id":"10","name":"Oil & Gas","value":0.39,"totalStocks":2,"color":"#CBCBCB","changeP":-0.39},
+            {"id":"11","name":"Banks","value":0.34,"totalStocks":5,"color":"#CBCBCB","changeP":-0.34},
+            {"id":"12","name":"FMCG","value":0.32,"totalStocks":2,"color":"#CBCBCB","changeP":0.32},
+            {"id":"13","name":"Healthcare","value":0.31,"totalStocks":5,"color":"#CBCBCB","changeP":0.31},
+            {"id":"14","name":"Automobile & Ancillaries","value":0.3,"totalStocks":5,"color":"#CBCBCB","changeP":0.3},
+            {"id":"15","name":"Power","value":0.24,"totalStocks":2,"color":"#CBCBCB","changeP":-0.24},
+            {"id":"16","name":"Diversified","value":0.18,"totalStocks":2,"color":"#CBCBCB","changeP":-0.18},
+            {"id":"17","name":"Diamond  &  Jewellery","value":0.14,"totalStocks":1,"color":"#CBCBCB","changeP":-0.14},
+            {"id":"18","name":"Software & IT Services","value":0.09,"totalStocks":6,"color":"#CBCBCB","changeP":0.09},
+            {"id":"19","name":"Trading","value":0.05,"totalStocks":1,"color":"#CBCBCB","changeP":0.05},
+            {"id":"20","name":"Chemicals","value":0.03,"totalStocks":1,"color":"#CBCBCB","changeP":0.03},
+            {"fullName":"JSW Steel","name":"JSW Steel","ltp":1327,"change":33.3,"changeP":2.57,"abschangeP":2.57,"url":"https://www.moneycontrol.com/india/stockpricequote/steel-large/jswsteel/JVS","color":"#84F0AC","mrkCap":324511.74,"sector":"Metals & Mining","value":2.57,"previousMarketCap":316368.37958142004,"scId":"JVS","parent":"1"},
+            {"fullName":"Hindalco Industries","name":"Hindalco","ltp":1058.5,"change":24.5,"changeP":2.37,"abschangeP":2.37,"url":"https://www.moneycontrol.com/india/stockpricequote/metals-nonferrous/hindalcoindustries/HI","color":"#84F0AC","mrkCap":237868.93,"sector":"Metals & Mining","value":2.37,"previousMarketCap":232363.2224782,"scId":"H","parent":"1"},
+            {"fullName":"Tata Steel","name":"Tata Steel","ltp":186.3,"change":3.3,"changeP":1.8,"abschangeP":1.8,"url":"https://www.moneycontrol.com/india/stockpricequote/ironsteel/tatasteel/TIS","color":"#84F0AC","mrkCap":232568.19,"sector":"Metals & Mining","value":1.8,"previousMarketCap":228448.6272003,"scId":"TIS","parent":"1"},
+            {"fullName":"Coal India","name":"Coal India","ltp":406.9,"change":1.7,"changeP":0.42,"abschangeP":0.42,"url":"https://www.moneycontrol.com/india/stockpricequote/miningminerals/coalindia/CI29","color":"#CBCBCB","mrkCap":250761.42,"sector":"Metals & Mining","value":0.42,"previousMarketCap":249713.75181004,"scId":"CI29","parent":"1"},
+            {"fullName":"Bajaj Finance","name":"Bajaj Finance","ltp":1077,"change":-18,"changeP":-1.64,"abschangeP":1.64,"url":"https://www.moneycontrol.com/india/stockpricequote/finance-nbfc/bajajfinance/BAF","color":"#FDC5CA","mrkCap":670535.28,"sector":"Finance","value":1.64,"previousMarketCap":681741.996288,"scId":"BAF","parent":"2"},
+            {"fullName":"Bajaj Finserv","name":"Bajaj Finserv","ltp":2001.7,"change":-30.8,"changeP":-1.52,"abschangeP":1.52,"url":"https://www.moneycontrol.com/india/stockpricequote/finance-investments/bajajfinserv/BF04","color":"#FDC5CA","mrkCap":320382.09,"sector":"Finance","value":1.52,"previousMarketCap":325311.785061,"scId":"BF04","parent":"2"},
+            {"fullName":"Shriram Finance","name":"Shriram Finance","ltp":1119,"change":-11,"changeP":-0.97,"abschangeP":0.97,"url":"https://www.moneycontrol.com/india/stockpricequote/finance-leasinghirepurchase/shriramfinance/STF","color":"#CBCBCB","mrkCap":263298.86,"sector":"Finance","value":0.97,"previousMarketCap":265887.140359,"scId":"STF","parent":"2"},
+            {"fullName":"Jio Financial Services","name":"Jio Financial","ltp":242,"change":-2,"changeP":-0.82,"abschangeP":0.82,"url":"https://www.moneycontrol.com/india/stockpricequote/finance-others/jiofinancialservices/JFS","color":"#CBCBCB","mrkCap":159796.03,"sector":"Finance","value":0.82,"previousMarketCap":161116.6556012,"scId":"JFS","parent":"2"},
+            {"fullName":"TATA Consumer Products","name":"TATA Cons. Prod","ltp":1062.5,"change":13.5,"changeP":1.29,"abschangeP":1.29,"url":"https://www.moneycontrol.com/india/stockpricequote/plantations-teacoffee/tataconsumerproducts/TT","color":"#84F0AC","mrkCap":105154.56,"sector":"Agri","value":1.29,"previousMarketCap":103818.4822588,"scId":"TT","parent":"3"},
+            {"fullName":"SBI Life Insurance Company","name":"SBI Life Insura","ltp":1761.8,"change":-31.1,"changeP":-1.73,"abschangeP":1.73,"url":"https://www.moneycontrol.com/india/stockpricequote/lifehealthinsurance/sbilifeinsurancecompany/SLI03","color":"#FDC5CA","mrkCap":176770.13,"sector":"Insurance","value":1.73,"previousMarketCap":179890.54476388,"scId":"SLI03","parent":"4"},
+            {"fullName":"HDFC Life Insurance Company","name":"HDFC Life","ltp":552.95,"change":-1.85,"changeP":-0.33,"abschangeP":0.33,"url":"https://www.moneycontrol.com/india/stockpricequote/lifehealthinsurance/hdfclifeinsurancecompany/HSL01","color":"#CBCBCB","mrkCap":120127,"sector":"Insurance","value":0.33,"previousMarketCap":120528.91194587998,"scId":"HSL01","parent":"4"},
+            {"fullName":"Bharat Electronics","name":"Bharat Elec","ltp":409,"change":-5,"changeP":-1.21,"abschangeP":1.21,"url":"https://www.moneycontrol.com/india/stockpricequote/aerospacedefence/bharatelectronics/BE03","color":"#FDC5CA","mrkCap":298969.95,"sector":"Aviation","value":1.21,"previousMarketCap":302624.8435206,"scId":"BE03","parent":"5"},
+            {"fullName":"Interglobe Aviation","name":"Interglobe Avi","ltp":5115,"change":5,"changeP":0.1,"abschangeP":0.1,"url":"https://www.moneycontrol.com/india/stockpricequote/transportlogistics/interglobeaviation/IA05","color":"#CBCBCB","mrkCap":197779.96,"sector":"Aviation","value":0.1,"previousMarketCap":197586.631067,"scId":"IA05","parent":"5"},
+            {"fullName":"Adani Ports and Special Economic Zone","name":"Adani Ports","ltp":1672.1,"change":-27.9,"changeP":-1.64,"abschangeP":1.64,"url":"https://www.moneycontrol.com/india/stockpricequote/infrastructure-general/adaniportsandspecialeconomiczone/MPS","color":"#FDC5CA","mrkCap":361196.83,"sector":"Infrastructure","value":1.64,"previousMarketCap":367223.62065,"scId":"MPS","parent":"6"},
+            {"fullName":"Larsen and Toubro","name":"Larsen","ltp":4090,"change":-3,"changeP":-0.07,"abschangeP":0.07,"url":"https://www.moneycontrol.com/india/stockpricequote/infrastructure-general/larsenandtoubro/LT","color":"#CBCBCB","mrkCap":575427.12,"sector":"Infrastructure","value":0.07,"previousMarketCap":575849.1908831,"scId":"LT","parent":"6"},
+            {"fullName":"Trent","name":"Trent","ltp":2905,"change":-19,"changeP":-0.65,"abschangeP":0.65,"url":"https://www.moneycontrol.com/india/stockpricequote/retail/trent/L","color":"#CBCBCB","mrkCap":154903.98,"sector":"Retailing","value":0.65,"previousMarketCap":155917.1248124,"scId":"L","parent":"7"},
+            {"fullName":"UltraTech Cement","name":"UltraTechCement","ltp":11504,"change":-66,"changeP":-0.57,"abschangeP":0.57,"url":"https://www.moneycontrol.com/india/stockpricequote/cement-major/ultratechcement/UTC01","color":"#CBCBCB","mrkCap":338998.92,"sector":"Construction Materials","value":0.57,"previousMarketCap":340943.800847,"scId":"UTC","parent":"8"},
+            {"fullName":"Bharti Airtel","name":"Bharti Airtel","ltp":1935,"change":-11,"changeP":-0.57,"abschangeP":0.57,"url":"https://www.moneycontrol.com/india/stockpricequote/telecommunications-service/bhartiairtel/BTV","color":"#CBCBCB","mrkCap":1179103.86,"sector":"Telecom","value":0.57,"previousMarketCap":1185806.772108,"scId":"BTV","parent":"9"},
+            {"fullName":"Reliance Industries","name":"Reliance","ltp":1309.8,"change":-6.2,"changeP":-0.47,"abschangeP":0.47,"url":"https://www.moneycontrol.com/india/stockpricequote/refineries/relianceindustries/RI","color":"#CBCBCB","mrkCap":1772491.92,"sector":"Oil & Gas","value":0.47,"previousMarketCap":1780882.0958152,"scId":"RI","parent":"10"},
+            {"fullName":"Oil and Natural Gas Corporation","name":"ONGC","ltp":236.55,"change":0.15,"changeP":0.06,"abschangeP":0.06,"url":"https://www.moneycontrol.com/india/stockpricequote/oildrillingandexploration/oilandnaturalgascorporation/ONG","color":"#CBCBCB","mrkCap":297586.5,"sector":"Oil & Gas","value":0.06,"previousMarketCap":297397.80042984,"scId":"ONG","parent":"10"},
+            {"fullName":"State Bank of India","name":"SBI","ltp":1039.5,"change":-9.2,"changeP":-0.88,"abschangeP":0.88,"url":"https://www.moneycontrol.com/india/stockpricequote/banks-publicsector/statebankofindia/SBI","color":"#CBCBCB","mrkCap":959522.7,"sector":"Banks","value":0.88,"previousMarketCap":968014.8662438202,"scId":"SBI","parent":"11"},
+            {"fullName":"Axis Bank","name":"Axis Bank","ltp":1236,"change":-9.8,"changeP":-0.79,"abschangeP":0.79,"url":"https://www.moneycontrol.com/india/stockpricequote/banks-privatesector/axisbank/UTI10","color":"#CBCBCB","mrkCap":384755.11,"sector":"Banks","value":0.79,"previousMarketCap":387805.75684986,"scId":"UTI10","parent":"11"},
+            {"fullName":"ICICI Bank","name":"ICICI Bank","ltp":1415,"change":-5,"changeP":-0.35,"abschangeP":0.35,"url":"https://www.moneycontrol.com/india/stockpricequote/banks-privatesector/icicibank/ICI02","color":"#CBCBCB","mrkCap":1015459.9,"sector":"Banks","value":0.35,"previousMarketCap":1019048.093266,"scId":"ICI02","parent":"11"},
+            {"fullName":"Kotak Mahindra Bank","name":"Kotak Mahindra","ltp":401.45,"change":-1.35,"changeP":-0.34,"abschangeP":0.34,"url":"https://www.moneycontrol.com/india/stockpricequote/banks-privatesector/kotakmahindrabank/KMF","color":"#CBCBCB","mrkCap":399348.65,"sector":"Banks","value":0.34,"previousMarketCap":400691.58480784,"scId":"KMF","parent":"11"},
+            {"fullName":"HDFC Bank","name":"HDFC Bank","ltp":729,"change":2.05,"changeP":0.28,"abschangeP":0.28,"url":"https://www.moneycontrol.com/india/stockpricequote/banks-privatesector/hdfcbank/HDF01","color":"#CBCBCB","mrkCap":1123470.71,"sector":"Banks","value":0.28,"previousMarketCap":1120311.4336801101,"scId":"HDF01","parent":"11"},
+            {"fullName":"Hindustan Unilever","name":"HUL","ltp":2030,"change":15,"changeP":0.74,"abschangeP":0.74,"url":"https://www.moneycontrol.com/india/stockpricequote/personalcare/hindustanunilever/HL","color":"#CBCBCB","mrkCap":476967.03,"sector":"FMCG","value":0.74,"previousMarketCap":473442.639293,"scId":"HL","parent":"12"},
+            {"fullName":"Nestle India","name":"Nestle","ltp":1471.3,"change":-5.8,"changeP":-0.39,"abschangeP":0.39,"url":"https://www.moneycontrol.com/india/stockpricequote/foodprocessing/nestleindia/NI","color":"#CBCBCB","mrkCap":283712.89,"sector":"FMCG","value":0.39,"previousMarketCap":284831.3082072,"scId":"NI","parent":"12"},
+            {"fullName":"Dr Reddys Laboratories","name":"Dr Reddys Labs","ltp":1190,"change":15.3,"changeP":1.3,"abschangeP":1.3,"url":"https://www.moneycontrol.com/india/stockpricequote/pharmaceuticals/drreddyslaboratories/DRL","color":"#84F0AC","mrkCap":99326.42,"sector":"Healthcare","value":1.3,"previousMarketCap":98049.366226,"scId":"DRL","parent":"13"},
+            {"fullName":"Max Healthcare Institute","name":"Max Healthcare","ltp":990.5,"change":-9.5,"changeP":-0.95,"abschangeP":0.95,"url":"https://www.moneycontrol.com/india/stockpricequote/hospitalhealthcareservices/maxhealthcareinstitute/MHI","color":"#CBCBCB","mrkCap":96403.04,"sector":"Healthcare","value":0.95,"previousMarketCap":97327.6486,"scId":"MHI","parent":"13"},
+            {"fullName":"Cipla","name":"Cipla","ltp":1437.9,"change":5.7,"changeP":0.4,"abschangeP":0.4,"url":"https://www.moneycontrol.com/india/stockpricequote/pharmaceuticals/cipla/C","color":"#CBCBCB","mrkCap":116161.21,"sector":"Healthcare","value":0.4,"previousMarketCap":115700.73043452,"scId":"C","parent":"13"},
+            {"fullName":"Sun Pharmaceutical Industries","name":"Sun Pharma","ltp":1910,"change":7.6,"changeP":0.4,"abschangeP":0.4,"url":"https://www.moneycontrol.com/india/stockpricequote/pharmaceuticals/sunpharmaceuticalindustries/SPI","color":"#CBCBCB","mrkCap":458272.98,"sector":"Healthcare","value":0.4,"previousMarketCap":456449.4846928,"scId":"SPI","parent":"13"},
+            {"fullName":"Apollo Hospitals Enterprises","name":"Apollo Hospital","ltp":8702,"change":9,"changeP":0.1,"abschangeP":0.1,"url":"https://www.moneycontrol.com/india/stockpricequote/hospitalsmedicalservices/apollohospitalsenterprises/AHE","color":"#CBCBCB","mrkCap":125121.41,"sector":"Healthcare","value":0.1,"previousMarketCap":124992.0023301,"scId":"AHE","parent":"13"},
+            {"fullName":"Tata Motors Passenger Vehicles","name":"TMPV","ltp":314.4,"change":-3.5,"changeP":-1.1,"abschangeP":1.1,"url":"https://www.moneycontrol.com/india/stockpricequote/automobile-passengercars/tatamotorspassengervehicles/TEL","color":"#FDC5CA","mrkCap":115790.11,"sector":"Automobile & Ancillaries","value":1.1,"previousMarketCap":117079.12218375999,"scId":"TEL","parent":"14"},
+            {"fullName":"Bajaj Auto","name":"Bajaj Auto","ltp":11800,"change":100,"changeP":0.85,"abschangeP":0.85,"url":"https://www.moneycontrol.com/india/stockpricequote/auto-wheelers/bajajauto/BA06","color":"#CBCBCB","mrkCap":329807.45,"sector":"Automobile & Ancillaries","value":0.85,"previousMarketCap":327012.47046,"scId":"BA06","parent":"14"},
+            {"fullName":"Eicher Motors","name":"Eicher Motors","ltp":8047,"change":37,"changeP":0.46,"abschangeP":0.46,"url":"https://www.moneycontrol.com/india/stockpricequote/auto-lcvshcvs/eichermotors/EM","color":"#CBCBCB","mrkCap":220903.72,"sector":"Automobile & Ancillaries","value":0.46,"previousMarketCap":219888.009666,"scId":"EM","parent":"14"},
+            {"fullName":"Maruti Suzuki India","name":"Maruti Suzuki","ltp":13620,"change":55,"changeP":0.41,"abschangeP":0.41,"url":"https://www.moneycontrol.com/india/stockpricequote/auto-carsjeeps/marutisuzukiindia/MU01","color":"#CBCBCB","mrkCap":428216.31,"sector":"Automobile & Ancillaries","value":0.41,"previousMarketCap":426487.091631,"scId":"MU01","parent":"14"},
+            {"fullName":"Mahindra and Mahindra","name":"M&M","ltp":3414.1,"change":1.9,"changeP":0.06,"abschangeP":0.06,"url":"https://www.moneycontrol.com/india/stockpricequote/auto-carsjeeps/mahindraandmahindra/MM","color":"#CBCBCB","mrkCap":424553.18,"sector":"Automobile & Ancillaries","value":0.06,"previousMarketCap":424316.90771382,"scId":"MM","parent":"14"},
+            {"fullName":"Power Grid Corporation of India","name":"Power Grid Corp","ltp":271.4,"change":-1,"changeP":-0.37,"abschangeP":0.37,"url":"https://www.moneycontrol.com/india/stockpricequote/power-generationdistribution/powergridcorporationofindia/PGC","color":"#CBCBCB","mrkCap":252418.39,"sector":"Power","value":0.37,"previousMarketCap":253348.44802955995,"scId":"PGC","parent":"15"},
+            {"fullName":"NTPC","name":"NTPC","ltp":339.5,"change":-0.5,"changeP":-0.15,"abschangeP":0.15,"url":"https://www.moneycontrol.com/india/stockpricequote/power-generationdistribution/ntpc/NTP","color":"#CBCBCB","mrkCap":329201.82,"sector":"Power","value":0.15,"previousMarketCap":329686.648556,"scId":"NTP","parent":"15"},
+            {"fullName":"Grasim Industries","name":"Grasim","ltp":3288,"change":-20,"changeP":-0.6,"abschangeP":0.6,"url":"https://www.moneycontrol.com/india/stockpricequote/diversified/grasimindustries/GI01","color":"#CBCBCB","mrkCap":223755.36,"sector":"Diversified","value":0.6,"previousMarketCap":225116.4073364,"scId":"GI01","parent":"16"},
+            {"fullName":"ITC","name":"ITC","ltp":269.7,"change":0.3,"changeP":0.11,"abschangeP":0.11,"url":"https://www.moneycontrol.com/india/stockpricequote/diversified/itc/ITC","color":"#CBCBCB","mrkCap":337928.22,"sector":"Diversified","value":0.11,"previousMarketCap":337552.32791513996,"scId":"ITC","parent":"16"},
+            {"fullName":"Titan Company","name":"Titan Company","ltp":5079,"change":-7.1,"changeP":-0.14,"abschangeP":0.14,"url":"https://www.moneycontrol.com/india/stockpricequote/miscellaneous/titancompany/TI01","color":"#CBCBCB","mrkCap":450906.59,"sector":"Diamond  &  Jewellery","value":0.14,"previousMarketCap":451536.9188376,"scId":"TI01","parent":"17"},
+            {"fullName":"HCL Technologies","name":"HCL Tech","ltp":1322,"change":19.5,"changeP":1.5,"abschangeP":1.5,"url":"https://www.moneycontrol.com/india/stockpricequote/computers-software/hcltechnologies/HCL02","color":"#84F0AC","mrkCap":358746.53,"sector":"Software & IT Services","value":1.5,"previousMarketCap":353454.878754,"scId":"HCL02","parent":"18"},
+            {"fullName":"Infosys","name":"Infosys","ltp":1130,"change":9,"changeP":0.8,"abschangeP":0.8,"url":"https://www.moneycontrol.com/india/stockpricequote/computers-software/infosys/IT","color":"#CBCBCB","mrkCap":458560.4,"sector":"Software & IT Services","value":0.8,"previousMarketCap":454908.1445237,"scId":"IT","parent":"18"},
+            {"fullName":"Tata Consultancy Services","name":"TCS","ltp":2284.1,"change":-17.9,"changeP":-0.78,"abschangeP":0.78,"url":"https://www.moneycontrol.com/india/stockpricequote/computers-software/tataconsultancyservices/TCS","color":"#CBCBCB","mrkCap":826407.37,"sector":"Software & IT Services","value":0.78,"previousMarketCap":832883.7466436,"scId":"TCS","parent":"18"},
+            {"fullName":"Wipro","name":"Wipro","ltp":181.31,"change":0.52,"changeP":0.29,"abschangeP":0.29,"url":"https://www.moneycontrol.com/india/stockpricequote/computers-software/wipro/W","color":"#CBCBCB","mrkCap":179579.17,"sector":"Software & IT Services","value":0.29,"previousMarketCap":179064.131636521,"scId":"W","parent":"18"},
+            {"fullName":"Eternal","name":"Eternal","ltp":327.15,"change":-0.85,"changeP":-0.26,"abschangeP":0.26,"url":"https://www.moneycontrol.com/india/stockpricequote/onlineservices/eternal/Z01","color":"#CBCBCB","mrkCap":315711.22,"sector":"Software & IT Services","value":0.26,"previousMarketCap":316531.5012216,"scId":"Z01","parent":"18"},
+            {"fullName":"Tech Mahindra","name":"Tech Mahindra","ltp":1584,"change":0,"changeP":0,"abschangeP":0,"url":"https://www.moneycontrol.com/india/stockpricequote/computers-software/techmahindra/TM4","color":"#CBCBCB","mrkCap":155253.19,"sector":"Software & IT Services","value":0,"previousMarketCap":155253.1869504,"scId":"TM4","parent":"18"},
+            {"fullName":"Adani Enterprises","name":"Adani Enterpris","ltp":2998.6,"change":1.6,"changeP":0.05,"abschangeP":0.05,"url":"https://www.moneycontrol.com/india/stockpricequote/trading/adanienterprises/AE01","color":"#CBCBCB","mrkCap":405833.9,"sector":"Trading","value":0.05,"previousMarketCap":405617.3540226,"scId":"AE01","parent":"19"},
+            {"fullName":"Asian Paints","name":"Asian Paints","ltp":2640.8,"change":0.8,"changeP":0.03,"abschangeP":0.03,"url":"https://www.moneycontrol.com/india/stockpricequote/paintsvarnishes/asianpaints/API","color":"#CBCBCB","mrkCap":253304.95,"sector":"Chemicals","value":0.03,"previousMarketCap":253228.21656,"scId":"API","parent":"20"}
+        ],
+        "asOnDate": " 3:59 PM | 24 Aug 2026"
+    }
+};
+
+  // Auto-load sample on first paint so the dashboard isn't empty.
+  rawPayload = SAMPLE_DATA;
+  render();
+
+  MULTI_INDEX_ORDER.forEach(id => { multiPayloads[id] = SAMPLE_DATA; });
+  multiIsSample = true;
+  renderMulti();
+  renderSummary();
+})();
+</script>
+
+</body>
+</html>
