@@ -189,6 +189,48 @@
   }
   button.ghost{ background:transparent; }
 
+  /* ---------- Direction Toggle Segmented Control ---------- */
+  .direction-toggle-group{
+    display:flex;
+    background:var(--surface-2);
+    border:1px solid var(--border);
+    border-radius:var(--radius);
+    padding:3px;
+    gap:4px;
+    height:38px;
+    box-sizing:border-box;
+  }
+  .dir-btn{
+    flex:1;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap:5px;
+    padding:0 12px;
+    font-size:12.5px;
+    font-weight:700;
+    border-radius:4px;
+    border:none;
+    background:transparent;
+    color:var(--text-dim);
+    cursor:pointer;
+    transition:all .15s ease;
+    white-space:nowrap;
+  }
+  .dir-btn:hover{
+    color:var(--text);
+  }
+  .dir-btn.active.up{
+    background:var(--gain);
+    color:#081810;
+    box-shadow:0 0 12px rgba(53,208,138,0.4);
+  }
+  .dir-btn.active.down{
+    background:var(--loss);
+    color:#1f0606;
+    box-shadow:0 0 12px rgba(255,107,107,0.4);
+  }
+
   /* ---------- Status banner ---------- */
   .banner{
     max-width:1240px;
@@ -730,12 +772,16 @@
     <span class="hint">applies to all sections</span>
   </div>
   <div class="field">
-    <label for="directionId">Direction</label>
-    <select id="directionId">
+    <label>Momentum Direction</label>
+    <div class="direction-toggle-group" id="directionToggleGroup">
+      <button type="button" class="dir-btn active up" id="btnDirUp" data-dir="up">▲ Up</button>
+      <button type="button" class="dir-btn down" id="btnDirDown" data-dir="down">▼ Down</button>
+    </div>
+    <select id="directionId" style="display:none;">
       <option value="up" selected>▲ Up — Gainers</option>
       <option value="down">▼ Down — Losers</option>
     </select>
-    <span class="hint">applies to all sections</span>
+    <span class="hint" id="hintDirection">gaining momentum (all sections)</span>
   </div>
   <div class="field">
     <label for="sectorThresh">Sector threshold %</label>
@@ -2006,19 +2052,43 @@
     }
 };
 
+  // Direction button toggle handler
+  const btnDirUp = document.getElementById('btnDirUp');
+  const btnDirDown = document.getElementById('btnDirDown');
+  const hintDir = document.getElementById('hintDirection');
+
+  function setDirection(dir) {
+    if (els.directionId) els.directionId.value = dir;
+    if (btnDirUp && btnDirDown) {
+      if (dir === 'up') {
+        btnDirUp.classList.add('active');
+        btnDirDown.classList.remove('active');
+        if (hintDir) hintDir.textContent = 'gaining momentum (all sections)';
+      } else {
+        btnDirDown.classList.add('active');
+        btnDirUp.classList.remove('active');
+        if (hintDir) hintDir.textContent = 'falling momentum (all sections)';
+      }
+    }
+    updateDirectionHints();
+    updateConfluenceLabels();
+    if (rawPayload) render();
+    if (Object.keys(multiPayloads).length) {
+      renderMulti();
+      renderSummary();
+    }
+    if (Object.keys(confluenceBasePayloads).length) {
+      renderConfluence();
+    }
+  }
+
+  if (btnDirUp) btnDirUp.addEventListener('click', () => setDirection('up'));
+  if (btnDirDown) btnDirDown.addEventListener('click', () => setDirection('down'));
+
   // Direction change event listener
   if (els.directionId) {
     els.directionId.addEventListener('change', () => {
-      updateDirectionHints();
-      updateConfluenceLabels();
-      if (rawPayload) render();
-      if (Object.keys(multiPayloads).length) {
-        renderMulti();
-        renderSummary();
-      }
-      if (Object.keys(confluenceBasePayloads).length) {
-        renderConfluence();
-      }
+      setDirection(els.directionId.value);
     });
   }
 
