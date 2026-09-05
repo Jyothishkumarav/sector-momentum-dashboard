@@ -615,6 +615,11 @@
     color:var(--amber);
     border:1px solid rgba(240,185,77,0.3);
   }
+  .confluence-pill-tag.down{
+    background:var(--loss-dim);
+    color:var(--loss);
+    border:1px solid rgba(255,107,107,0.25);
+  }
   .confluence-stock-table{
     margin-top:10px;
     border-top:1px solid var(--border);
@@ -663,6 +668,10 @@
   .confluence-stat-box.compare{
     background:rgba(240,185,77,0.15);
     color:var(--amber);
+  }
+  .confluence-stat-box.down{
+    background:var(--loss-dim);
+    color:var(--loss);
   }
 
   footer{
@@ -721,14 +730,22 @@
     <span class="hint">applies to all sections</span>
   </div>
   <div class="field">
+    <label for="directionId">Direction</label>
+    <select id="directionId">
+      <option value="up" selected>▲ Up — Gainers</option>
+      <option value="down">▼ Down — Losers</option>
+    </select>
+    <span class="hint">applies to all sections</span>
+  </div>
+  <div class="field">
     <label for="sectorThresh">Sector threshold %</label>
     <input type="number" id="sectorThresh" value="1.5" step="0.1" min="0">
-    <span class="hint">abs(change) ≥ this</span>
+    <span class="hint" id="hintSectorThresh">change ≥ this</span>
   </div>
   <div class="field">
     <label for="stockThresh">Stock threshold %</label>
     <input type="number" id="stockThresh" value="2" step="0.1" min="0">
-    <span class="hint">abs(change) ≥ this</span>
+    <span class="hint" id="hintStockThresh">change ≥ this</span>
   </div>
   <div class="field btn-field">
     <label>Actions</label>
@@ -769,12 +786,12 @@
   <div class="field">
     <label for="multiSectorThresh">Sector threshold %</label>
     <input type="number" id="multiSectorThresh" value="1" step="0.1" min="0">
-    <span class="hint">abs(change) ≥ this</span>
+    <span class="hint" id="hintMultiSectorThresh">change ≥ this</span>
   </div>
   <div class="field">
     <label for="multiStockThresh">Stock threshold %</label>
     <input type="number" id="multiStockThresh" value="1" step="0.1" min="0">
-    <span class="hint">abs(change) ≥ this</span>
+    <span class="hint" id="hintMultiStockThresh">change ≥ this</span>
   </div>
   <div class="field btn-field">
     <label>Actions</label>
@@ -803,7 +820,7 @@
   <div class="field">
     <label for="summaryThresh">Threshold %</label>
     <input type="number" id="summaryThresh" value="1" step="0.1" min="0">
-    <span class="hint">abs(change) ≥ this</span>
+    <span class="hint" id="hintSummaryThresh">change ≥ this</span>
   </div>
   <div class="field btn-field">
     <label>Actions</label>
@@ -869,7 +886,7 @@
   <div class="field">
     <label for="confluenceStockThresh">Stock thresh %</label>
     <input type="number" id="confluenceStockThresh" value="1.0" step="0.1" min="0">
-    <span class="hint">both periods ≥ this</span>
+    <span class="hint" id="hintConfluenceStockThresh">both periods ≥ this</span>
   </div>
   <div class="field btn-field">
     <label>Actions</label>
@@ -925,6 +942,7 @@
     multiBannerInner: document.getElementById('multiBannerInner'),
     multiIndexList: document.getElementById('multiIndexList'),
     periodId: document.getElementById('periodId'),
+    directionId: document.getElementById('directionId'),
   };
 
   let rawPayload = null; // parsed API JSON
@@ -1122,17 +1140,19 @@
   // Builds the sector-card grid HTML for one dataset + threshold pair.
   // Shared by the single-index view and each block in the multi-index overview,
   // so both render "in the same way".
-  function buildSectorGridHTML(sectors, bySector, sectorThresh, stockThresh, positiveOnly){
+  function buildSectorGridHTML(sectors, bySector, sectorThresh, stockThresh, direction = 'up'){
+    const isUp = direction === 'up';
     const qualifying = sectors
-      .filter(s => positiveOnly ? s.changeP >= sectorThresh : Math.abs(s.changeP) >= sectorThresh)
-      .sort((a,b) => Math.abs(b.changeP) - Math.abs(a.changeP));
+      .filter(s => isUp ? s.changeP >= sectorThresh : s.changeP <= -sectorThresh)
+      .sort((a,b) => isUp ? b.changeP - a.changeP : a.changeP - b.changeP);
 
     if (!qualifying.length){
+      const condText = isUp ? `gained &ge; +${sectorThresh}%` : `fell &le; -${sectorThresh}%`;
       return {
         html: `
           <div class="empty">
-            <b>Nothing crossed ${sectorThresh}% today</b>
-            Lower the sector threshold, or check back closer to close — moves tend to widen through the session.
+            <b>Nothing ${condText}</b>
+            Lower the sector threshold, or switch the Direction / Period above to explore sector rotation.
           </div>`,
         qualifyingCount: 0,
         qualStockCount: 0
@@ -1143,15 +1163,16 @@
     let qualStockCount = 0;
 
     const html = qualifying.map(s => {
-      const dir = s.changeP > 0 ? 'up' : 'down';
-      const stocksIn = (bySector[s.id] || bySector[normalizeSectorName(s.name)] || bySector[s.name] || []).slice().sort((a,b) => positiveOnly ? b.changeP - a.changeP : Math.abs(b.changeP) - Math.abs(a.changeP));
-      const qualStocks = stocksIn.filter(x => positiveOnly ? x.changeP >= stockThresh : Math.abs(x.changeP) >= stockThresh);
+      const dir = s.changeP > 0 ? 'up' : (s.changeP < 0 ? 'down' : 'flat');
+      const stocksIn = (bySector[s.id] || bySector[normalizeSectorName(s.name)] || bySector[s.name] || []).slice()
+        .sort((a,b) => isUp ? b.changeP - a.changeP : a.changeP - b.changeP);
+      const qualStocks = stocksIn.filter(x => isUp ? x.changeP >= stockThresh : x.changeP <= -stockThresh);
       qualStockCount += qualStocks.length;
       const width = Math.min(100, (Math.abs(s.changeP) / maxAbs) * 100);
 
       const stockRows = qualStocks.length
         ? qualStocks.map(st => {
-            const sdir = st.changeP > 0 ? 'up' : 'down';
+            const sdir = st.changeP > 0 ? 'up' : (st.changeP < 0 ? 'down' : 'flat');
             return `
               <a class="stock-row" href="${st.url || '#'}" target="_blank" rel="noopener">
                 <div class="stock-left">
@@ -1161,7 +1182,7 @@
                 <span class="stock-change ${sdir}">${fmtPct(st.changeP)}</span>
               </a>`;
           }).join('')
-        : `<div class="no-stocks">No individual stock in this sector cleared ${stockThresh}% today — the sector move is broad rather than led by one name.</div>`;
+        : `<div class="no-stocks">No individual stock in this sector ${isUp ? `gained &ge; +${stockThresh}%` : `fell &le; -${stockThresh}%`} — the move is broad across the sector.</div>`;
 
       return `
         <div class="card">
@@ -1199,16 +1220,18 @@
     const { sectors, bySector, asOnDate } = process(rawPayload);
     const sectorThresh = parseFloat(els.sectorThresh.value) || 0;
     const stockThresh = parseFloat(els.stockThresh.value) || 0;
+    const direction = (els.directionId && els.directionId.value) || 'up';
+    const isUp = direction === 'up';
 
     renderTicker(sectors);
 
-    const { html, qualifyingCount, qualStockCount } = buildSectorGridHTML(sectors, bySector, sectorThresh, stockThresh, true);
+    const { html, qualifyingCount, qualStockCount } = buildSectorGridHTML(sectors, bySector, sectorThresh, stockThresh, direction);
 
     els.statsRow.style.display = 'flex';
     els.statsRow.innerHTML = `
       <div class="stat"><b>${sectors.length}</b><span>Sectors scanned</span></div>
-      <div class="stat"><b>${qualifyingCount}</b><span>Past ${sectorThresh}% threshold</span></div>
-      <div class="stat"><b>${qualStockCount}</b><span>Stocks past ${stockThresh}%</span></div>
+      <div class="stat"><b>${qualifyingCount}</b><span>${isUp ? `Gaining &ge; +${sectorThresh}%` : `Falling &le; -${sectorThresh}%`}</span></div>
+      <div class="stat"><b>${qualStockCount}</b><span>${isUp ? `Stocks &ge; +${stockThresh}%` : `Stocks &le; -${stockThresh}%`}</span></div>
       <div class="stat asof"><b>${asOnDate ? asOnDate.trim() : '—'}</b><span>As on</span></div>
     `;
 
@@ -1240,10 +1263,12 @@
     }
     const sectorThresh = parseFloat(els.multiSectorThresh.value) || 0;
     const stockThresh = parseFloat(els.multiStockThresh.value) || 0;
+    const direction = (els.directionId && els.directionId.value) || 'up';
+    const isUp = direction === 'up';
 
     els.multiIndexList.innerHTML = ids.map(id => {
       const { sectors, bySector, asOnDate } = process(multiPayloads[id]);
-      const { html, qualifyingCount, qualStockCount } = buildSectorGridHTML(sectors, bySector, sectorThresh, stockThresh, true);
+      const { html, qualifyingCount, qualStockCount } = buildSectorGridHTML(sectors, bySector, sectorThresh, stockThresh, direction);
       const sampleTag = multiIsSample ? '<span class="sample-flag">Sample data</span>' : '';
       return `
         <div class="index-block">
@@ -1251,7 +1276,7 @@
             <div>
               <span class="index-block-name">${INDEX_NAMES[id] || ('Index ' + id)}${sampleTag}</span>
             </div>
-            <div class="index-block-meta">${qualifyingCount} sector${qualifyingCount===1?'':'s'} · ${qualStockCount} stock${qualStockCount===1?'':'s'} past threshold · as on ${asOnDate ? asOnDate.trim() : '—'}</div>
+            <div class="index-block-meta">${qualifyingCount} sector${qualifyingCount===1?'':'s'} · ${qualStockCount} stock${qualStockCount===1?'':'s'} ${isUp ? `&ge; +${stockThresh}%` : `&le; -${stockThresh}%`} · as on ${asOnDate ? asOnDate.trim() : '—'}</div>
           </div>
           <div class="grid">${html}</div>
         </div>`;
@@ -1319,6 +1344,8 @@
 
   function renderSummary(){
     const thresh = parseFloat(summaryThreshInp.value) || 0;
+    const direction = (els.directionId && els.directionId.value) || 'up';
+    const isUp = direction === 'up';
     const ids = MULTI_INDEX_ORDER.filter(id => multiPayloads[id]);
     if (!ids.length){
       summaryList.innerHTML = '<p style="padding:16px 28px;color:var(--text-dim);font-size:13px;">No data loaded yet — use <b>Fetch all 5 live</b> above or <b>Preview with sample data</b>, then click Refresh summary.</p>';
@@ -1326,8 +1353,8 @@
     }
     summaryList.innerHTML = ids.map(id => {
       const { sectors, bySector, asOnDate } = process(multiPayloads[id]);
-      const allSectors = sectors.slice().sort((a,b) => Math.abs(b.changeP) - Math.abs(a.changeP));
-      const qualifying = allSectors.filter(s => s.changeP >= thresh);
+      const allSectors = sectors.slice().sort((a,b) => isUp ? b.changeP - a.changeP : a.changeP - b.changeP);
+      const qualifying = allSectors.filter(s => isUp ? s.changeP >= thresh : s.changeP <= -thresh);
       const upCount = qualifying.filter(s => s.changeP > 0).length;
       const downCount = qualifying.filter(s => s.changeP < 0).length;
       const sampleTag = multiIsSample ? '<span class="sample-flag">Sample data</span>' : '';
@@ -1338,7 +1365,7 @@
             const sign = s.changeP > 0 ? '+' : '';
             return `<span class="summary-sector-pill ${dir}">${s.name}&nbsp;<b>${sign}${s.changeP.toFixed(2)}%</b></span>`;
           }).join('')
-        : `<span class="summary-empty">No sector crossed ${thresh}% threshold</span>`;
+        : `<span class="summary-empty">No sector ${isUp ? `gained &ge; +${thresh}%` : `fell &le; -${thresh}%`}</span>`;
 
       // colour divider bar proportional to up/down sectors
       const total = qualifying.length || 1;
@@ -1353,7 +1380,7 @@
           <div class="summary-divider">${dividerSegs}</div>
           <div class="summary-index-top">
             <div class="summary-index-name">${INDEX_NAMES[id] || ('Index ' + id)}${sampleTag ? '&nbsp;<span class="sample-flag">Sample</span>' : ''}</div>
-            <div class="summary-index-meta">${qualifying.length} sector${qualifying.length===1?'':'s'} past ${thresh}% &nbsp;·&nbsp; ▲ ${upCount} up &nbsp;·&nbsp; ▼ ${downCount} down</div>
+            <div class="summary-index-meta">${qualifying.length} sector${qualifying.length===1?'':'s'} ${isUp ? `&ge; +${thresh}%` : `&le; -${thresh}%`} &nbsp;·&nbsp; ▲ ${upCount} up &nbsp;·&nbsp; ▼ ${downCount} down</div>
             <div class="summary-index-asof">${asOnDate ? asOnDate.trim() : '—'}</div>
           </div>
           <div class="summary-sector-strip">${pills}</div>
@@ -1395,15 +1422,36 @@
   }
   function hideConfluenceBanner(){ confluenceEls.bannerWrap.style.display = 'none'; }
 
+  function updateDirectionHints(){
+    const dir = (els.directionId && els.directionId.value) || 'up';
+    const isUp = dir === 'up';
+
+    const secHint = document.getElementById('hintSectorThresh');
+    const stkHint = document.getElementById('hintStockThresh');
+    const multiSecHint = document.getElementById('hintMultiSectorThresh');
+    const multiStkHint = document.getElementById('hintMultiStockThresh');
+    const sumHint = document.getElementById('hintSummaryThresh');
+    const confStkHint = document.getElementById('hintConfluenceStockThresh');
+
+    if (secHint) secHint.textContent = isUp ? 'change ≥ this' : 'change ≤ -this';
+    if (stkHint) stkHint.textContent = isUp ? 'change ≥ this' : 'change ≤ -this';
+    if (multiSecHint) multiSecHint.textContent = isUp ? 'change ≥ this' : 'change ≤ -this';
+    if (multiStkHint) multiStkHint.textContent = isUp ? 'change ≥ this' : 'change ≤ -this';
+    if (sumHint) sumHint.textContent = isUp ? 'change ≥ this' : 'change ≤ -this';
+    if (confStkHint) confStkHint.textContent = isUp ? 'both periods ≥ this' : 'both periods ≤ -this';
+  }
+
   function updateConfluenceLabels(){
     const baseP = confluenceEls.basePeriod.value;
     const compP = confluenceEls.comparePeriod.value;
+    const dir = (els.directionId && els.directionId.value) || 'up';
+    const isUp = dir === 'up';
 
     confluenceEls.lblThreshBase.textContent = `${baseP} Sector thresh %`;
-    confluenceEls.hintThreshBase.textContent = `${baseP} change ≥ this`;
+    confluenceEls.hintThreshBase.textContent = `${baseP} ${isUp ? 'change ≥ this' : 'change ≤ -this'}`;
 
     confluenceEls.lblThreshCompare.textContent = `${compP} Sector thresh %`;
-    confluenceEls.hintThreshCompare.textContent = `${compP} change ≥ this`;
+    confluenceEls.hintThreshCompare.textContent = `${compP} ${isUp ? 'change ≥ this' : 'change ≤ -this'}`;
 
     // Ensure compare options make sense based on base
     const opt5D = confluenceEls.comparePeriod.querySelector('option[value="5D"]');
@@ -1412,7 +1460,7 @@
       if (confluenceEls.comparePeriod.value === '5D') {
         confluenceEls.comparePeriod.value = '1M';
         confluenceEls.lblThreshCompare.textContent = `1M Sector thresh %`;
-        confluenceEls.hintThreshCompare.textContent = `1M change ≥ this`;
+        confluenceEls.hintThreshCompare.textContent = `1M ${isUp ? 'change ≥ this' : 'change ≤ -this'}`;
       }
     } else {
       if (opt5D) opt5D.disabled = false;
@@ -1460,6 +1508,8 @@
     const threshBase = parseFloat(confluenceEls.threshBase.value) || 0;
     const threshCompare = parseFloat(confluenceEls.threshCompare.value) || 0;
     const stockThresh = parseFloat(confluenceEls.stockThresh.value) || 0;
+    const direction = (els.directionId && els.directionId.value) || 'up';
+    const isUp = direction === 'up';
 
     // Check if we have data for the target indices
     const availableIds = targetIds.filter(id => confluenceBasePayloads[id] && confluenceComparePayloads[id]);
@@ -1596,24 +1646,34 @@
       });
     });
 
-    // Filter sectors with positive confluence in both timeframes
+    // Filter sectors with confluence in both timeframes
     const allSectors = Object.values(sectorMap);
-    const qualifyingSectors = allSectors.filter(s => s.changeBase >= threshBase && s.changeCompare >= threshCompare)
-      .sort((a,b) => (b.changeBase + b.changeCompare) - (a.changeBase + a.changeCompare));
+    const qualifyingSectors = allSectors.filter(s =>
+      isUp
+        ? (s.changeBase >= threshBase && s.changeCompare >= threshCompare)
+        : (s.changeBase <= -threshBase && s.changeCompare <= -threshCompare)
+    ).sort((a,b) =>
+      isUp
+        ? (b.changeBase + b.changeCompare) - (a.changeBase + a.changeCompare)
+        : (a.changeBase + a.changeCompare) - (b.changeBase + b.changeCompare)
+    );
 
     let totalConfluentStocks = 0;
 
     if (!qualifyingSectors.length){
+      const condLabel = isUp
+        ? `(${baseP} &ge; +${threshBase}% &amp; ${compP} &ge; +${threshCompare}%)`
+        : `(${baseP} &le; -${threshBase}% &amp; ${compP} &le; -${threshCompare}%)`;
       confluenceEls.statsRow.style.display = 'flex';
       confluenceEls.statsRow.innerHTML = `
-        <div class="stat"><b>0</b><span>Confluent sectors (${baseP} &ge; ${threshBase}% &amp; ${compP} &ge; ${threshCompare}%)</span></div>
+        <div class="stat"><b>0</b><span>Confluent sectors ${condLabel}</span></div>
         <div class="stat"><b>${allSectors.length}</b><span>Total sectors scanned</span></div>
         <div class="stat asof"><b>${latestAsOn || '—'}</b><span>As on</span></div>
       `;
       confluenceEls.grid.innerHTML = `
         <div class="empty">
-          <b>No sector crossed both ${baseP} (&ge;${threshBase}%) and ${compP} (&ge;${threshCompare}%)</b>
-          Try lowering the threshold values or switch the comparison period to discover emerging trends.
+          <b>No sector crossed both ${baseP} (${isUp ? `&ge;+${threshBase}%` : `&le;-${threshBase}%`}) and ${compP} (${isUp ? `&ge;+${threshCompare}%` : `&le;-${threshCompare}%`})</b>
+          Try lowering the threshold values or switch the comparison period / direction above.
         </div>`;
       return;
     }
@@ -1623,18 +1683,26 @@
 
       // 1. Strict confluent stocks: stocks meeting stockThresh in BOTH timeframes
       const strictConfluentStocks = allSectorStocks
-        .filter(st => st.changeBase >= stockThresh && st.changeCompare !== null && st.changeCompare >= stockThresh)
-        .sort((a,b) => b.score - a.score);
+        .filter(st =>
+          isUp
+            ? (st.changeBase >= stockThresh && st.changeCompare !== null && st.changeCompare >= stockThresh)
+            : (st.changeBase <= -stockThresh && st.changeCompare !== null && st.changeCompare <= -stockThresh)
+        )
+        .sort((a,b) => isUp ? b.score - a.score : a.score - b.score);
 
-      // 2. Positive in both timeframes
-      const positiveBothStocks = allSectorStocks
-        .filter(st => st.changeBase > 0 && st.changeCompare !== null && st.changeCompare > 0)
-        .sort((a,b) => b.score - a.score);
+      // 2. Confluent in both timeframes
+      const trendBothStocks = allSectorStocks
+        .filter(st =>
+          isUp
+            ? (st.changeBase > 0 && st.changeCompare !== null && st.changeCompare > 0)
+            : (st.changeBase < 0 && st.changeCompare !== null && st.changeCompare < 0)
+        )
+        .sort((a,b) => isUp ? b.score - a.score : a.score - b.score);
 
-      // 3. Positive in base period
-      const positiveBaseStocks = allSectorStocks
-        .filter(st => st.changeBase > 0)
-        .sort((a,b) => b.score - a.score);
+      // 3. Confluent in base period
+      const trendBaseStocks = allSectorStocks
+        .filter(st => isUp ? st.changeBase > 0 : st.changeBase < 0)
+        .sort((a,b) => isUp ? b.score - a.score : a.score - b.score);
 
       totalConfluentStocks += strictConfluentStocks.length;
 
@@ -1642,22 +1710,22 @@
       let subDesc = '';
       if (strictConfluentStocks.length > 0) {
         qualStocks = strictConfluentStocks;
-        subDesc = `${strictConfluentStocks.length} stock${strictConfluentStocks.length===1?'':'s'} past ${stockThresh}% in both timeframes`;
-      } else if (positiveBothStocks.length > 0) {
-        qualStocks = positiveBothStocks;
-        subDesc = `${positiveBothStocks.length} stock${positiveBothStocks.length===1?'':'s'} positive in both timeframes (<${stockThresh}% thresh)`;
-      } else if (positiveBaseStocks.length > 0) {
-        qualStocks = positiveBaseStocks;
-        subDesc = `${positiveBaseStocks.length} stock${positiveBaseStocks.length===1?'':'s'} positive in ${baseP}`;
+        subDesc = `${strictConfluentStocks.length} stock${strictConfluentStocks.length===1?'':'s'} ${isUp ? `&ge; +${stockThresh}%` : `&le; -${stockThresh}%`} in both timeframes`;
+      } else if (trendBothStocks.length > 0) {
+        qualStocks = trendBothStocks;
+        subDesc = `${trendBothStocks.length} stock${trendBothStocks.length===1?'':'s'} ${isUp ? 'positive' : 'declining'} in both timeframes`;
+      } else if (trendBaseStocks.length > 0) {
+        qualStocks = trendBaseStocks;
+        subDesc = `${trendBaseStocks.length} stock${trendBaseStocks.length===1?'':'s'} ${isUp ? 'positive' : 'declining'} in ${baseP}`;
       } else {
-        qualStocks = allSectorStocks.slice(0, 10);
+        qualStocks = allSectorStocks.slice().sort((a,b) => isUp ? b.score - a.score : a.score - b.score).slice(0, 10);
         subDesc = `${allSectorStocks.length} stock${allSectorStocks.length===1?'':'s'} in sector`;
       }
 
       const stockRows = qualStocks.length
         ? qualStocks.map(st => {
-            const baseDir = st.changeBase >= 0 ? 'day' : 'down';
-            const compDir = (st.changeCompare !== null && st.changeCompare >= 0) ? 'compare' : 'down';
+            const baseDir = st.changeBase > 0 ? 'day' : (st.changeBase < 0 ? 'down' : 'flat');
+            const compDir = (st.changeCompare !== null && st.changeCompare > 0) ? 'compare' : ((st.changeCompare !== null && st.changeCompare < 0) ? 'down' : 'flat');
             const compText = st.changeCompare !== null
               ? `${compP} ${st.changeCompare >= 0 ? '+' : ''}${st.changeCompare.toFixed(2)}%`
               : `${compP} —`;
@@ -1677,6 +1745,8 @@
 
       const indicesBadge = Array.from(s.indices).join(', ');
       const sampleTag = confluenceIsSample ? '<span class="sample-flag" style="margin-left:6px;">Sample</span>' : '';
+      const basePillDir = s.changeBase > 0 ? 'day' : (s.changeBase < 0 ? 'down' : 'flat');
+      const compPillDir = s.changeCompare > 0 ? 'compare' : (s.changeCompare < 0 ? 'down' : 'flat');
 
       return `
         <div class="confluence-card">
@@ -1686,12 +1756,12 @@
               <div class="card-count" style="margin-top:2px;">${subDesc} &nbsp;·&nbsp; ${indicesBadge}</div>
             </div>
             <div class="confluence-dual-changes">
-              <span class="confluence-pill-tag day" title="${baseP} Trend">${baseP} ${s.changeBase >= 0 ? '+' : ''}${s.changeBase.toFixed(2)}%</span>
-              <span class="confluence-pill-tag compare" title="${compP} Trend">${compP} ${s.changeCompare >= 0 ? '+' : ''}${s.changeCompare.toFixed(2)}%</span>
+              <span class="confluence-pill-tag ${basePillDir}" title="${baseP} Trend">${baseP} ${s.changeBase >= 0 ? '+' : ''}${s.changeBase.toFixed(2)}%</span>
+              <span class="confluence-pill-tag ${compPillDir}" title="${compP} Trend">${compP} ${s.changeCompare >= 0 ? '+' : ''}${s.changeCompare.toFixed(2)}%</span>
             </div>
           </div>
           <div class="heatbar" style="margin-top:8px;">
-            <div class="heatbar-fill up" style="width:100%;"></div>
+            <div class="heatbar-fill ${isUp ? 'up' : 'down'}" style="width:100%;"></div>
           </div>
           <div class="confluence-stock-table">
             ${stockRows}
@@ -1701,8 +1771,8 @@
 
     confluenceEls.statsRow.style.display = 'flex';
     confluenceEls.statsRow.innerHTML = `
-      <div class="stat"><b>${qualifyingSectors.length}</b><span>Confluent sectors (${baseP} &amp; ${compP})</span></div>
-      <div class="stat"><b>${totalConfluentStocks}</b><span>Confluent stocks past ${stockThresh}%</span></div>
+      <div class="stat"><b>${qualifyingSectors.length}</b><span>Confluent ${isUp ? 'rising' : 'falling'} sectors (${baseP} &amp; ${compP})</span></div>
+      <div class="stat"><b>${totalConfluentStocks}</b><span>Confluent stocks ${isUp ? `&ge; +${stockThresh}%` : `&le; -${stockThresh}%`}</span></div>
       <div class="stat"><b>${baseP} vs ${compP}</b><span>Comparison mode</span></div>
       <div class="stat asof"><b>${latestAsOn || '—'}</b><span>As on</span></div>
     `;
@@ -1936,7 +2006,24 @@
     }
 };
 
+  // Direction change event listener
+  if (els.directionId) {
+    els.directionId.addEventListener('change', () => {
+      updateDirectionHints();
+      updateConfluenceLabels();
+      if (rawPayload) render();
+      if (Object.keys(multiPayloads).length) {
+        renderMulti();
+        renderSummary();
+      }
+      if (Object.keys(confluenceBasePayloads).length) {
+        renderConfluence();
+      }
+    });
+  }
+
   // Initialize dashboard views with clear empty states on first paint.
+  updateDirectionHints();
   updateConfluenceLabels();
   render();
   renderMulti();
